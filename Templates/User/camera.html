@@ -632,9 +632,6 @@
         const cameraFrame = document.getElementById("cameraFrame");
         const guidePanel = document.getElementById("guidePanel");
         const guideBackdrop = document.getElementById("guideBackdrop");
-        const liveFeedbackPanel = document.getElementById("liveFeedbackPanel");
-        const miniSignal = document.getElementById("miniSignal");
-        const liveInstructionBox = document.getElementById("liveInstructionBox");
         const anglesSection = document.getElementById("anglesSection");
         const toggleAnglesBtn = document.getElementById("toggleAnglesBtn");
         const freezeLayer = document.getElementById("freezeLayer");
@@ -645,42 +642,23 @@
         const resumeBtn = document.getElementById("resumeBtn");
 
         let stream = null;
-        let predictionTimer = null;
-        let anglesVisible = false;
         let isFrozen = false;
         let isStarting = false;
         let requestInFlight = false;
         let perfectHoldFrames = 0;
         let lastPayload = null;
+        let animationId = null;
+        let predictIntervalId = null;
+        let anglesVisible = false;
 
-        const POLL_INTERVAL_MS = 850;
-        const FREEZE_THRESHOLD_FRAMES = 2;
         const MIRROR_PREVIEW = true;
+        const FREEZE_THRESHOLD_FRAMES = 3;
+        const PREDICT_EVERY_MS = 260;
+        const JPEG_QUALITY = 0.72;
 
-        // --- MATH: MAPS COORDINATES TO VIDEO PIXELS ---
-        function getDisplayParams() {
-            const containerW = overlay.width;
-            const containerH = overlay.height;
-            const videoW = video.videoWidth;
-            const videoH = video.videoHeight;
+        // lightweight display smoothing only
+        const DISPLAY_POINT_STATE = new Map();
 
-            if (!videoW || !videoH) return { scale: 1, offsetX: 0, offsetY: 0 };
-
-            const containerRatio = containerW / containerH;
-            const videoRatio = videoW / videoH;
-
-            let scale, offsetX = 0, offsetY = 0;
-            if (containerRatio > videoRatio) {
-                scale = containerW / videoW;
-                offsetY = (containerH - videoH * scale) / 2;
-            } else {
-                scale = containerH / videoH;
-                offsetX = (containerW - videoW * scale) / 2;
-            }
-            return { scale, offsetX, offsetY };
-        }
-
-        // --- UI CONTROLS ---
         function toggleGuide() {
             guidePanel.classList.toggle("open");
             guideBackdrop.classList.toggle("show");
@@ -695,19 +673,7 @@
             anglesVisible = !anglesVisible;
             anglesSection.className = anglesVisible ? "angle-section-visible" : "angle-section-hidden";
             toggleAnglesBtn.textContent = anglesVisible ? "Hide Angles" : "Show Angles";
-            if (lastPayload) drawOverlay(lastPayload);
-        }
-
-        function resizeOverlay() {
-            const rect = cameraFrame.getBoundingClientRect();
-            overlay.width = rect.width;
-            overlay.height = rect.height;
-            if (lastPayload) drawOverlay(lastPayload);
-        }
-
-        function setOutlineState(state) {
-            poseOutline.classList.remove("outline-red", "outline-yellow", "outline-green");
-            poseOutline.classList.add(`outline-${state}`);
+            drawOverlay(lastPayload);
         }
 
         function setCameraBanner(text) {
@@ -721,182 +687,404 @@
             [startBtn, stopBtn, resumeBtn].forEach(btn => btn.classList.toggle("opacity-60", btn.disabled));
         }
 
-        // --- VISUAL OVERLAY ---
+        function resizeOverlay() {
+            const rect = cameraFrame.getBoundingClientRect();
+            const dpr = window.devicePixelRatio || 1;
+
+            overlay.width = Math.round(rect.width * dpr);
+            overlay.height = Math.round(rect.height * dpr);
+            overlay.style.width = `${rect.width}px`;
+            overlay.style.height = `${rect.height}px`;
+
+            overlayCtx.setTransform(1, 0, 0, 1, 0, 0);
+            overlayCtx.scale(dpr, dpr);
+
+            drawOverlay(lastPayload);
+        }
+
+        function setOutlineState(state) {
+            poseOutline.classList.remove("outline-red", "outline-yellow", "outline-green");
+            poseOutline.classList.add(`outline-${state}`);
+        }
+
+        function getCanvasCssSize() {
+            const rect = overlay.getBoundingClientRect();
+            return { width: rect.width, height: rect.height };
+        }
+
+        function getDisplayParams() {
+            const { width: containerW, height: containerH } = getCanvasCssSize();
+            const videoW = video.videoWidth;
+            const videoH = video.videoHeight;
+
+            if (!videoW || !videoH || !containerW || !containerH) {
+                return { scale: 1, offsetX: 0, offsetY: 0, containerW, containerH, videoW, videoH };
+            }
+
+            const scale = Math.max(containerW / videoW, containerH / videoH);
+            const drawW = videoW * scale;
+            const drawH = videoH * scale;
+            const offsetX = (containerW - drawW) / 2;
+            const offsetY = (containerH - drawH) / 2;
+
+            return { scale, offsetX, offsetY, containerW, containerH, videoW, videoH };
+        }
+
+        function mapVideoPointToCanvas(xNorm, yNorm) {
+            const { scale, offsetX, offsetY, containerW, videoW, videoH } = getDisplayParams();
+            let x = xNorm * videoW * scale + offsetX;
+            let y = yNorm * videoH * scale + offsetY;
+
+            if (MIRROR_PREVIEW) {
+                x = containerW - x;
+            }
+            return { x, y };
+        }
+
+        function smoothDisplayPoint(name, x, y) {
+            const prev = DISPLAY_POINT_STATE.get(name);
+            if (!prev) {
+                const value = { x, y };
+                DISPLAY_POINT_STATE.set(name, value);
+                return value;
+            }
+
+            const dx = Math.abs(x - prev.x);
+            const dy = Math.abs(y - prev.y);
+            const dist = Math.sqrt(dx * dx + dy * dy);
+
+            // adaptive smoothing: small moves smooth more, large moves follow faster
+            let alpha = 0.42;
+            if (dist > 45) alpha = 0.82;
+            else if (dist > 20) alpha = 0.62;
+
+            prev.x = prev.x + (x - prev.x) * alpha;
+            prev.y = prev.y + (y - prev.y) * alpha;
+
+            return prev;
+        }
+
+        function resetDisplayPointState() {
+            DISPLAY_POINT_STATE.clear();
+        }
+
+        function drawPoint(x, y, radius, color) {
+            overlayCtx.beginPath();
+            overlayCtx.arc(x, y, radius + 4, 0, Math.PI * 2);
+            overlayCtx.fillStyle =
+                color === "#00ff66" ? "rgba(0,255,102,0.18)" :
+                    color === "#ffd60a" ? "rgba(255,214,10,0.20)" :
+                        "rgba(255,59,48,0.18)";
+            overlayCtx.fill();
+
+            overlayCtx.beginPath();
+            overlayCtx.arc(x, y, radius, 0, Math.PI * 2);
+            overlayCtx.fillStyle = color || "#cfcfcf";
+            overlayCtx.fill();
+        }
+
+        function drawAngleLabel(x, y, text) {
+            overlayCtx.font = "bold 14px Arial";
+            const padX = 8;
+            const boxH = 24;
+            const textW = overlayCtx.measureText(text).width;
+            const boxW = Math.max(42, textW + padX * 2);
+            const boxX = x + 10;
+            const boxY = y - 28;
+
+            overlayCtx.fillStyle = "rgba(0,0,0,0.62)";
+            overlayCtx.beginPath();
+            overlayCtx.roundRect(boxX, boxY, boxW, boxH, 7);
+            overlayCtx.fill();
+
+            overlayCtx.fillStyle = "#ffffff";
+            overlayCtx.fillText(text, boxX + padX, boxY + 16);
+        }
+
         function drawOverlay(data) {
-            overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
-            if (!data || !data.points || data.points.length === 0) return;
+            const { width, height } = getCanvasCssSize();
+            overlayCtx.clearRect(0, 0, width, height);
+
+            if (!data || !Array.isArray(data.points) || data.points.length === 0) return;
 
             const pose = String(data.pose || "").toLowerCase();
             if (pose.includes("unknown") || pose.includes("body not visible")) return;
 
-            const { scale, offsetX, offsetY } = getDisplayParams();
-            const videoW = video.videoWidth;
-            const videoH = video.videoHeight;
-            const points = data.points;
+            for (const pt of data.points) {
+                if (!pt.visible) continue;
 
-            const connections = [
-                ["left_shoulder", "right_shoulder"], ["left_shoulder", "left_hip"],
-                ["right_shoulder", "right_hip"], ["left_hip", "right_hip"],
-                ["left_shoulder", "left_elbow"], ["left_elbow", "left_wrist"],
-                ["right_shoulder", "right_elbow"], ["right_elbow", "right_wrist"],
-                ["left_hip", "left_knee"], ["left_knee", "left_ankle"],
-                ["right_hip", "right_knee"], ["right_knee", "right_ankle"]
-            ];
+                const mapped = mapVideoPointToCanvas(pt.x, pt.y);
+                const smoothed = smoothDisplayPoint(pt.name || `${pt.x}-${pt.y}`, mapped.x, mapped.y);
+                drawPoint(smoothed.x, smoothed.y, pt.radius || 6, pt.color || "#cfcfcf");
+            }
 
-            overlayCtx.lineWidth = 3;
-            connections.forEach(([p1, p2]) => {
-                const pt1 = points.find(p => p.name === p1);
-                const pt2 = points.find(p => p.name === p2);
-                if (pt1?.visible && pt2?.visible) {
-                    let x1 = (pt1.x * videoW) * scale + offsetX;
-                    let y1 = (pt1.y * videoH) * scale + offsetY;
-                    let x2 = (pt2.x * videoW) * scale + offsetX;
-                    let y2 = (pt2.y * videoH) * scale + offsetY;
-                    if (MIRROR_PREVIEW) { x1 = overlay.width - x1; x2 = overlay.width - x2; }
-                    overlayCtx.beginPath();
-                    overlayCtx.moveTo(x1, y1);
-                    overlayCtx.lineTo(x2, y2);
-                    overlayCtx.strokeStyle = "rgba(255, 255, 255, 0.3)";
-                    overlayCtx.stroke();
+            if (anglesVisible && Array.isArray(data.angle_texts)) {
+                for (const item of data.angle_texts) {
+                    const mapped = mapVideoPointToCanvas(item.x, item.y);
+                    drawAngleLabel(mapped.x, mapped.y, item.text);
                 }
-            });
-
-            points.forEach(pt => {
-                if (!pt.visible) return;
-                let x = (pt.x * videoW) * scale + offsetX;
-                let y = (pt.y * videoH) * scale + offsetY;
-                if (MIRROR_PREVIEW) x = overlay.width - x;
-
-                overlayCtx.beginPath();
-                overlayCtx.arc(x, y, (pt.radius || 5) + 3, 0, Math.PI * 2);
-                overlayCtx.fillStyle = pt.color === "#00ff66" ? "rgba(0, 255, 102, 0.2)" : "rgba(255, 59, 48, 0.2)";
-                overlayCtx.fill();
-
-                overlayCtx.beginPath();
-                overlayCtx.arc(x, y, pt.radius || 5, 0, Math.PI * 2);
-                overlayCtx.fillStyle = pt.color || "#c7c7c7";
-                overlayCtx.fill();
-            });
+            }
         }
 
         function autoScaleOutlineFromPoints(points) {
-            if (!poseOutline || !points || points.length === 0) return;
-            const { scale, offsetY } = getDisplayParams();
-            const videoH = video.videoHeight;
-            const visiblePoints = points.filter(p => p.visible);
-            if (visiblePoints.length < 4) return;
+            if (!poseOutline || !Array.isArray(points) || points.length < 4) return;
 
-            const ys = visiblePoints.map(p => (p.y * videoH) * scale + offsetY);
+            const ys = [];
+            for (const p of points) {
+                if (!p.visible) continue;
+                const mapped = mapVideoPointToCanvas(p.x, p.y);
+                ys.push(mapped.y);
+            }
+
+            if (ys.length < 4) return;
+
             const topY = Math.min(...ys);
             const bottomY = Math.max(...ys);
             const detectedHeight = bottomY - topY;
-
-            if (detectedHeight < 100) return;
+            if (detectedHeight < 120) return;
 
             const frameHeight = cameraFrame.clientHeight;
-            let targetHeightPx = Math.max(frameHeight * 0.7, Math.min(frameHeight * 0.98, detectedHeight * 1.15));
-
+            const targetHeightPx = Math.max(frameHeight * 0.68, Math.min(frameHeight * 0.98, detectedHeight * 1.14));
             poseOutline.style.height = `${targetHeightPx}px`;
+
             const centerY = (topY + bottomY) / 2;
-            const offsetFromCenter = (centerY - frameHeight / 2);
-            poseOutline.style.transform = `translateX(-50%) translateY(${offsetFromCenter * 0.4}px)`;
+            const offsetFromCenter = centerY - frameHeight / 2;
+            poseOutline.style.transform = `translateX(-50%) translateY(${offsetFromCenter * 0.36}px)`;
         }
 
-        // --- MAIN UPDATE UI ---
         function updateUI(data) {
             lastPayload = data;
+
             const score = Number(data.score || 0);
             const status = data.status || "-";
             const pose = data.pose || "-";
+            const isPerfect = score >= 94 || String(status).toLowerCase().includes("perfect");
 
             document.getElementById("poseText").textContent = pose;
             document.getElementById("statusText").textContent = status;
-            document.getElementById("confidenceText").textContent = (data.confidence * 100).toFixed(1) + "%";
+            document.getElementById("confidenceText").textContent = `${((data.confidence || 0) * 100).toFixed(1)}%`;
             document.getElementById("scoreText").textContent = data.score ?? "-";
             document.getElementById("qualityText").textContent = (data.quality || "-").replaceAll("_", " ");
-            document.getElementById("holdText").textContent = (data.hold_time || 0).toFixed(1) + "s";
+            document.getElementById("holdText").textContent = `${Number(data.hold_time || 0).toFixed(1)}s`;
 
             document.getElementById("liveInstructionText").textContent = data.feedback || "Adjust posture";
-            document.getElementById("guidanceHeadline").textContent = data.coach_text || "Follow the guide";
-
-            // Angles
+            document.getElementById("guidanceHeadline").textContent = data.coach_text || data.feedback || "Follow the guide";
             document.getElementById("leftKneeAngle").textContent = data.angles?.left_knee_angle ?? "-";
             document.getElementById("rightKneeAngle").textContent = data.angles?.right_knee_angle ?? "-";
             document.getElementById("torsoTilt").textContent = data.angles?.torso_tilt ?? "-";
+            document.getElementById("modelPoseText").textContent = data.model_pose || "-";
+            document.getElementById("liveStatusText").textContent = status;
+            document.getElementById("liveScoreText").textContent = data.score ?? "-";
+            document.getElementById("rightQualityText").textContent = (data.quality || "-").replaceAll("_", " ");
+            document.getElementById("rightHoldText").textContent = `${Number(data.hold_time || 0).toFixed(1)}s`;
 
             const detailsList = document.getElementById("detailsList");
-            detailsList.innerHTML = (data.details || []).map(d => `<li>${d.replaceAll("_", " ")}</li>`).join("") || "<li>Good posture</li>";
+            detailsList.innerHTML =
+                (data.details || []).map(d => `<li>${String(d).replaceAll("_", " ")}</li>`).join("") ||
+                "<li>Good posture</li>";
 
             const badge = document.getElementById("poseOverlayBadge");
             const stateBadge = document.getElementById("cameraStateBadge");
-            const isPerfect = score >= 90 || status.toLowerCase().includes("perfect");
 
             badge.textContent = `${pose} (${score})`;
-            badge.className = `absolute top-4 left-4 px-4 py-3 rounded-2xl text-white text-lg font-semibold border z-20 ${isPerfect ? 'bg-emerald-500/80 border-emerald-300/30' : 'bg-amber-500/80 border-amber-300/30'}`;
+            badge.className = `absolute top-4 left-4 px-4 py-3 rounded-2xl text-white text-lg font-semibold border z-20 ${isPerfect
+                    ? "bg-emerald-500/80 border-emerald-300/30"
+                    : score >= 60
+                        ? "bg-amber-500/80 border-amber-300/30"
+                        : "bg-rose-500/80 border-rose-300/30"
+                }`;
+
             stateBadge.textContent = status;
 
-            setOutlineState(isPerfect ? "green" : (score > 50 ? "yellow" : "red"));
+            if (isPerfect) setOutlineState("green");
+            else if (score >= 60) setOutlineState("yellow");
+            else setOutlineState("red");
+
             autoScaleOutlineFromPoints(data.points || []);
             drawOverlay(data);
 
-            if (isPerfect) perfectHoldFrames++; else perfectHoldFrames = 0;
-            if (!isFrozen && perfectHoldFrames >= FREEZE_THRESHOLD_FRAMES) freezeCurrentFrame();
+            if (isPerfect) perfectHoldFrames++;
+            else perfectHoldFrames = 0;
+
+            if (!isFrozen && perfectHoldFrames >= FREEZE_THRESHOLD_FRAMES) {
+                freezeCurrentFrame();
+            }
         }
 
-        // --- SYSTEM ---
         function freezeCurrentFrame() {
             const tempCanvas = document.createElement("canvas");
-            tempCanvas.width = video.videoWidth; tempCanvas.height = video.videoHeight;
+            tempCanvas.width = video.videoWidth;
+            tempCanvas.height = video.videoHeight;
+
             const tCtx = tempCanvas.getContext("2d");
-            tCtx.translate(tempCanvas.width, 0); tCtx.scale(-1, 1);
+            tCtx.translate(tempCanvas.width, 0);
+            tCtx.scale(-1, 1);
             tCtx.drawImage(video, 0, 0);
-            freezeFrameImage.src = tempCanvas.toDataURL("image/jpeg");
-            freezeLayer.classList.add("show"); isFrozen = true;
-            clearInterval(predictionTimer); setCameraBanner("Perfect Pose!"); setButtonsState();
+
+            freezeFrameImage.src = tempCanvas.toDataURL("image/jpeg", 0.92);
+            freezeLayer.classList.add("show");
+            isFrozen = true;
+            stopPredictionLoopOnly();
+            setCameraBanner("Perfect Pose!");
+            setButtonsState();
         }
 
         async function startCamera() {
             if (stream || isStarting) return;
-            isStarting = true; setButtonsState();
+
+            isStarting = true;
+            setButtonsState();
+
             try {
                 stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } }
+                    video: {
+                        facingMode: "user",
+                        width: { ideal: 960 },
+                        height: { ideal: 540 }
+                    },
+                    audio: false
                 });
+
                 video.srcObject = stream;
-                video.onloadedmetadata = () => { video.play(); resizeOverlay(); setCameraBanner("Live"); };
-                predictionTimer = setInterval(captureAndPredict, POLL_INTERVAL_MS);
-            } catch (e) { alert("Camera Error"); }
-            finally { isStarting = false; setButtonsState(); }
+
+                await new Promise(resolve => {
+                    video.onloadedmetadata = () => resolve();
+                });
+
+                await video.play();
+                resizeOverlay();
+                setCameraBanner("Live");
+                startRenderLoop();
+                startPredictionLoop();
+            } catch (err) {
+                console.error(err);
+                alert("Unable to access camera.");
+            } finally {
+                isStarting = false;
+                setButtonsState();
+            }
+        }
+
+        function stopPredictionLoopOnly() {
+            if (predictIntervalId) {
+                clearInterval(predictIntervalId);
+                predictIntervalId = null;
+            }
+        }
+
+        function startPredictionLoop() {
+            stopPredictionLoopOnly();
+            predictIntervalId = setInterval(captureAndPredict, PREDICT_EVERY_MS);
+        }
+
+        function startRenderLoop() {
+            if (animationId) cancelAnimationFrame(animationId);
+
+            const render = () => {
+                if (!isFrozen && lastPayload) {
+                    drawOverlay(lastPayload);
+                }
+                animationId = requestAnimationFrame(render);
+            };
+
+            animationId = requestAnimationFrame(render);
         }
 
         async function captureAndPredict() {
             if (isFrozen || requestInFlight || !stream || !video.videoWidth) return;
+
             requestInFlight = true;
+
             try {
-                const ctx = captureCanvas.getContext("2d");
-                captureCanvas.width = video.videoWidth; captureCanvas.height = video.videoHeight;
-                ctx.drawImage(video, 0, 0);
-                const blob = await new Promise(r => captureCanvas.toBlob(r, "image/jpeg", 0.9));
-                const fd = new FormData(); fd.append("image", blob);
-                const res = await fetch("{% url 'User:predict_yoga_pose' %}", { method: "POST", body: fd });
+                captureCanvas.width = video.videoWidth;
+                captureCanvas.height = video.videoHeight;
+
+                const ctx = captureCanvas.getContext("2d", { alpha: false, willReadFrequently: false });
+                ctx.drawImage(video, 0, 0, captureCanvas.width, captureCanvas.height);
+
+                const blob = await new Promise(resolve => captureCanvas.toBlob(resolve, "image/jpeg", JPEG_QUALITY));
+                if (!blob) return;
+
+                const fd = new FormData();
+                fd.append("image", blob, "frame.jpg");
+
+                const res = await fetch("{% url 'User:predict_yoga_pose' %}", {
+                    method: "POST",
+                    body: fd
+                });
+
                 const data = await res.json();
-                if (data.success) updateUI(data);
-            } catch (e) { console.error(e); }
-            finally { requestInFlight = false; }
+                if (data && data.success) {
+                    updateUI(data);
+                }
+            } catch (err) {
+                console.error("captureAndPredict error:", err);
+            } finally {
+                requestInFlight = false;
+            }
         }
 
         function stopCamera() {
-            if (predictionTimer) clearInterval(predictionTimer);
-            if (stream) stream.getTracks().forEach(t => t.stop());
-            stream = null; video.srcObject = null; resetUI();
+            stopPredictionLoopOnly();
+
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+                animationId = null;
+            }
+
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+
+            stream = null;
+            video.srcObject = null;
+            resetUI();
         }
 
-        function resumeCamera() { isFrozen = false; freezeLayer.classList.remove("show"); startCamera(); }
+        function resumeCamera() {
+            isFrozen = false;
+            freezeLayer.classList.remove("show");
+            perfectHoldFrames = 0;
+            startPredictionLoop();
+            setCameraBanner("Live");
+            setButtonsState();
+        }
 
         function resetUI() {
-            lastPayload = null; isFrozen = false; freezeLayer.classList.remove("show");
-            overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
-            setCameraBanner(stream ? "Ready" : "Stopped"); setButtonsState();
+            lastPayload = null;
+            isFrozen = false;
+            perfectHoldFrames = 0;
+            freezeLayer.classList.remove("show");
+            resetDisplayPointState();
+
+            const { width, height } = getCanvasCssSize();
+            overlayCtx.clearRect(0, 0, width, height);
+
+            document.getElementById("poseText").textContent = "-";
+            document.getElementById("statusText").textContent = "-";
+            document.getElementById("confidenceText").textContent = "-";
+            document.getElementById("scoreText").textContent = "-";
+            document.getElementById("qualityText").textContent = "-";
+            document.getElementById("holdText").textContent = "-";
+            document.getElementById("liveInstructionText").textContent = "Waiting for pose";
+            document.getElementById("guidanceHeadline").textContent = "Stand still and begin the pose.";
+            document.getElementById("leftKneeAngle").textContent = "-";
+            document.getElementById("rightKneeAngle").textContent = "-";
+            document.getElementById("torsoTilt").textContent = "-";
+            document.getElementById("modelPoseText").textContent = "-";
+            document.getElementById("liveStatusText").textContent = "Waiting...";
+            document.getElementById("liveScoreText").textContent = "-";
+            document.getElementById("rightQualityText").textContent = "-";
+            document.getElementById("rightHoldText").textContent = "-";
+            document.getElementById("detailsList").innerHTML = "<li>No tips yet</li>";
+
+            const badge = document.getElementById("poseOverlayBadge");
+            badge.textContent = "Waiting...";
+            badge.className = "absolute top-4 left-4 px-4 py-3 rounded-2xl bg-amber-500/80 text-white text-lg font-semibold border border-amber-300/30 z-20";
+
+            setOutlineState("yellow");
+            setCameraBanner(stream ? "Ready" : "Stopped");
+            setButtonsState();
         }
 
         window.addEventListener("resize", resizeOverlay);
