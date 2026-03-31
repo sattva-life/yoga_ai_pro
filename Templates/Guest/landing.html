@@ -1,0 +1,524 @@
+{% extends "Guest/base.html" %}
+{% load static %}
+{% block content %}
+
+<div class="w-full overflow-hidden relative">
+
+    <!-- Full Screen Hero -->
+    <section class="relative w-full min-h-screen flex items-center overflow-hidden">
+        <!-- Background image -->
+        <img src="https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?q=80&w=2200&auto=format&fit=crop"
+            alt="Yoga background" class="absolute inset-0 w-full h-full object-cover">
+
+        <!-- overlays -->
+        <div class="absolute inset-0 bg-black/45"></div>
+        <div class="absolute inset-0 bg-gradient-to-r from-[#111111]/78 via-[#111111]/52 to-[#111111]/20"></div>
+        <div class="absolute inset-0 bg-gradient-to-t from-[#111111]/40 via-transparent to-[#E88490]/10"></div>
+
+        <!-- soft glows -->
+        <div class="absolute top-[10%] left-[8%] w-[340px] h-[340px] bg-[#E88490]/20 rounded-full blur-3xl"></div>
+        <div class="absolute bottom-[8%] right-[8%] w-[280px] h-[280px] bg-[#FBECEF]/10 rounded-full blur-3xl"></div>
+
+        <!-- hero content -->
+        <div class="relative z-10 w-full max-w-[1280px] mx-auto px-6 sm:px-8 lg:px-10 pt-36 pb-20">
+            <div class="max-w-3xl">
+                <div
+                    class="inline-flex items-center gap-2 bg-white/10 backdrop-blur-md text-white px-4 py-2 rounded-full text-xs font-bold tracking-wider border border-white/15 shadow-lg">
+                    <svg class="w-4 h-4 text-[#F6C2CA]" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd"
+                            d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v3.586L7.707 11.88a1 1 0 101.414 1.414l2-2A1 1 0 0011 10V7z"
+                            clip-rule="evenodd"></path>
+                    </svg>
+                    STOP WORRYING, START LIVING
+                </div>
+
+                <h1
+                    class="mt-6 text-5xl sm:text-6xl lg:text-7xl xl:text-[5.3rem] font-extrabold text-white leading-[0.96] tracking-tight">
+                    Welcome to<br>
+                    Sattvalife<br>
+                    <span class="text-[#F6B6C0]">Yoga & Wellness</span>
+                </h1>
+
+                <p class="mt-6 text-lg sm:text-xl text-white/85 max-w-2xl font-light leading-relaxed">
+                    Personalised yoga classes to help you move better, feel calmer, and live more mindfully.
+                </p>
+
+                <div class="flex flex-wrap items-center gap-4 mt-8">
+                    <button
+                        class="bg-[#E88490] text-white px-8 py-4 rounded-full font-medium shadow-xl shadow-[#E88490]/30 transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl hover:bg-[#D96C7A]">
+                        Join a Class
+                    </button>
+                    <button
+                        class="bg-white/10 backdrop-blur-md text-white px-8 py-4 rounded-full font-medium border border-white/20 transition-all duration-300 hover:-translate-y-1 hover:bg-white/20">
+                        Learn More
+                    </button>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-10 max-w-4xl">
+                    <div class="bg-white/10 backdrop-blur-lg rounded-2xl px-5 py-4 border border-white/15 shadow-xl">
+                        <h4 class="text-white font-semibold text-sm">Personal Yoga</h4>
+                        <p class="text-white/70 text-sm mt-1">Classes shaped for your needs</p>
+                    </div>
+                    <div class="bg-white/10 backdrop-blur-lg rounded-2xl px-5 py-4 border border-white/15 shadow-xl">
+                        <h4 class="text-white font-semibold text-sm">Mindful Practice</h4>
+                        <p class="text-white/70 text-sm mt-1">Breath, movement, and calm</p>
+                    </div>
+                    <div class="bg-white/10 backdrop-blur-lg rounded-2xl px-5 py-4 border border-white/15 shadow-xl">
+                        <h4 class="text-white font-semibold text-sm">Daily Balance</h4>
+                        <p class="text-white/70 text-sm mt-1">Support for body and mind</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- bottom fade -->
+        <div class="absolute bottom-0 left-0 w-full h-32 bg-gradient-to-t from-[#fff8f8] to-transparent"></div>
+    </section>
+
+    <!-- Rest of page in container -->
+    <div class="max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8">
+
+        <!-- Intro Section -->
+        <section id="features" class="mt-20 text-center mb-16 relative z-10">
+            <h2 class="text-[2.2rem] font-bold text-[#181818] mb-4">A calmer path to better wellbeing</h2>
+            <p class="text-lg text-[#6F696B] font-light max-w-2xl mx-auto leading-relaxed">
+                Yoga, breathwork, and mindfulness designed to help you feel stronger, lighter, and more balanced.
+            </p>
+        </section>
+
+        <!-- Pose Cards -->
+        <section id="poses" class="mb-28">
+            <div class="text-center mb-14">
+                <h2 class="text-[2.3rem] font-bold text-[#181818] mb-4">Explore Yoga Poses</h2>
+                <p class="text-lg text-[#6F696B] font-light max-w-2xl mx-auto">
+                    Choose a pose and begin your guided practice journey.
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+                <!-- Warrior II -->
+                <div class="group block">
+                    <article
+                        class="bg-white rounded-[2rem] border border-[#F3DADF] overflow-hidden shadow-sm hover:shadow-xl hover:-translate-y-2 transition-all duration-300">
+                        <div class="overflow-hidden">
+                            <img src="{% static 'Poses/warrior2.jpg' %}" alt="Warrior II Pose"
+                                class="h-64 w-full object-cover group-hover:scale-105 transition-transform duration-500">
+                        </div>
+                        <div class="p-7">
+                            <h3 class="text-2xl font-bold text-[#181818]">Warrior II Pose</h3>
+                            <p class="mt-3 text-[#746E70] font-light leading-relaxed">
+                                Strengthens legs and core while improving focus, balance, and posture.
+                            </p>
+                        </div>
+                    </article>
+                </div>
+
+                <!-- Goddess -->
+                <div class="group block">
+                    <article
+                        class="bg-[#FFF8F8] rounded-[2rem] border border-[#F3DADF] overflow-hidden shadow-sm hover:shadow-xl hover:-translate-y-2 transition-all duration-300">
+                        <div class="overflow-hidden">
+                            <img src="{% static 'Poses/goddess.jpg' %}" alt="Goddess Pose"
+                                class="h-64 w-full object-cover group-hover:scale-105 transition-transform duration-500">
+                        </div>
+                        <div class="p-7">
+                            <h3 class="text-2xl font-bold text-[#181818]">Goddess Pose</h3>
+                            <p class="mt-3 text-[#746E70] font-light leading-relaxed">
+                                Builds lower body strength and helps create grounded stability.
+                            </p>
+                        </div>
+                    </article>
+                </div>
+
+                <!-- Downward Dog -->
+                <div class="group block">
+                    <article
+                        class="bg-white rounded-[2rem] border border-[#F3DADF] overflow-hidden shadow-sm hover:shadow-xl hover:-translate-y-2 transition-all duration-300">
+                        <div class="overflow-hidden">
+                            <img src="{% static 'Poses/downward-dog.jpg' %}" alt="Downward Dog Pose"
+                                class="h-64 w-full object-cover group-hover:scale-105 transition-transform duration-500">
+                        </div>
+                        <div class="p-7">
+                            <h3 class="text-2xl font-bold text-[#181818]">Downward Dog Pose</h3>
+                            <p class="mt-3 text-[#746E70] font-light leading-relaxed">
+                                Lengthens the spine, shoulders, and hamstrings while energizing the body.
+                            </p>
+                        </div>
+                    </article>
+                </div>
+
+                <!-- Plank -->
+                <div class="group block">
+                    <article
+                        class="bg-[#FFF8F8] rounded-[2rem] border border-[#F3DADF] overflow-hidden shadow-sm hover:shadow-xl hover:-translate-y-2 transition-all duration-300">
+                        <div class="overflow-hidden">
+                            <img src="{% static 'Poses/plank.jpg' %}" alt="Plank Pose"
+                                class="h-64 w-full object-cover group-hover:scale-105 transition-transform duration-500">
+                        </div>
+                        <div class="p-7">
+                            <h3 class="text-2xl font-bold text-[#181818]">Plank Pose</h3>
+                            <p class="mt-3 text-[#746E70] font-light leading-relaxed">
+                                Improves core strength, shoulder stability, and full-body alignment.
+                            </p>
+                        </div>
+                    </article>
+                </div>
+
+                <!-- Tree -->
+                <div class="group block sm:col-span-2 lg:col-span-1">
+                    <article
+                        class="bg-white rounded-[2rem] border border-[#F3DADF] overflow-hidden shadow-sm hover:shadow-xl hover:-translate-y-2 transition-all duration-300">
+                        <div class="overflow-hidden">
+                            <img src="{% static 'Poses/tree.jpg' %}" alt="Tree Pose"
+                                class="h-64 w-full object-cover group-hover:scale-105 transition-transform duration-500">
+                        </div>
+                        <div class="p-7">
+                            <h3 class="text-2xl font-bold text-[#181818]">Tree Pose</h3>
+                            <p class="mt-3 text-[#746E70] font-light leading-relaxed">
+                                Enhances concentration, posture, and balance with calm body awareness.
+                            </p>
+                        </div>
+                    </article>
+                </div>
+            </div>
+        </section>
+
+        <!-- Features -->
+        <section class="grid grid-cols-1 md:grid-cols-3 gap-8 mb-28 relative z-10">
+            <div
+                class="bg-[#FFF8F8] p-10 rounded-[2rem] transition-all duration-500 hover:-translate-y-3 hover:shadow-xl group cursor-default border border-[#F3DADF]">
+                <div
+                    class="w-14 h-14 bg-[#FBECEF] text-[#D96C7A] rounded-full flex items-center justify-center mb-8 transition-transform duration-500 group-hover:scale-110">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 2v20m8-10H4">
+                        </path>
+                    </svg>
+                </div>
+                <h3 class="font-bold text-xl mb-4 text-[#181818]">Mindfulness</h3>
+                <p class="text-[15px] text-[#746E70] leading-relaxed font-light">
+                    Stay present, breathe deeply, and create more calm in your routine.
+                </p>
+            </div>
+
+            <div
+                class="bg-[#FDF1F3] p-10 rounded-[2rem] transition-all duration-500 hover:-translate-y-3 hover:shadow-xl group cursor-default border border-[#F0D7DC]">
+                <div
+                    class="w-14 h-14 bg-[#F8E1E5] text-[#C96D7A] rounded-full flex items-center justify-center mb-8 transition-transform duration-500 group-hover:scale-110">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M12 5l7 7-7 7">
+                        </path>
+                    </svg>
+                </div>
+                <h3 class="font-bold text-xl mb-4 text-[#181818]">Self Discovery</h3>
+                <p class="text-[15px] text-[#746E70] leading-relaxed font-light">
+                    Connect body and mind through movement that feels grounding and natural.
+                </p>
+            </div>
+
+            <div
+                class="bg-[#FFF8F8] p-10 rounded-[2rem] transition-all duration-500 hover:-translate-y-3 hover:shadow-xl group cursor-default border border-[#F3DADF]">
+                <div
+                    class="w-14 h-14 bg-[#FBECEF] text-[#D96C7A] rounded-full flex items-center justify-center mb-8 transition-transform duration-500 group-hover:scale-110">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M12 8c-1.657 0-3 1.567-3 3.5S10.343 15 12 15s3-1.567 3-3.5S13.657 8 12 8zm0 0V4m0 11v5m8-8h-4M8 12H4">
+                        </path>
+                    </svg>
+                </div>
+                <h3 class="font-bold text-xl mb-4 text-[#181818]">Meditation</h3>
+                <p class="text-[15px] text-[#746E70] leading-relaxed font-light">
+                    Add stillness and breath awareness to support clarity and emotional balance.
+                </p>
+            </div>
+        </section>
+
+        <!-- About -->
+        <section id="about" class="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center mb-32">
+            <div class="relative rounded-[2.5rem] overflow-hidden min-h-[500px] shadow-xl border border-[#F3DADF]">
+                <img src="https://images.unsplash.com/photo-1518611012118-696072aa579a?q=80&w=1600&auto=format&fit=crop"
+                    alt="Vinyasa Yoga" class="absolute inset-0 w-full h-full object-cover">
+            </div>
+
+            <div class="flex flex-col gap-6">
+                <div
+                    class="inline-flex w-fit items-center gap-2 bg-[#FBECEF] text-[#D96C7A] px-4 py-2 rounded-full text-xs font-semibold tracking-wider">
+                    FLOW • STRENGTH • BALANCE
+                </div>
+                <h2 class="text-4xl md:text-5xl font-bold text-[#181818] leading-tight">About Vinyasa Yoga</h2>
+                <p class="text-[#6F696B] text-lg leading-relaxed font-light">
+                    Vinyasa connects breath with movement to build strength, flexibility, and a greater sense of
+                    balance.
+                </p>
+                <p class="text-[#6F696B] text-lg leading-relaxed font-light">
+                    Our sessions are simple, supportive, and designed for all levels.
+                </p>
+
+                <div class="grid grid-cols-2 gap-4 pt-2">
+                    <div class="bg-[#FFF8F8] rounded-2xl p-5 border border-[#F3DADF]">
+                        <h4 class="font-semibold text-[#181818]">Flexibility</h4>
+                        <p class="text-sm text-[#7A7476] mt-1">Move with greater ease.</p>
+                    </div>
+                    <div class="bg-[#FFF8F8] rounded-2xl p-5 border border-[#F3DADF]">
+                        <h4 class="font-semibold text-[#181818]">Strength</h4>
+                        <p class="text-sm text-[#7A7476] mt-1">Build steady support.</p>
+                    </div>
+                    <div class="bg-[#FFF8F8] rounded-2xl p-5 border border-[#F3DADF]">
+                        <h4 class="font-semibold text-[#181818]">Breath</h4>
+                        <p class="text-sm text-[#7A7476] mt-1">Learn calm, conscious breathing.</p>
+                    </div>
+                    <div class="bg-[#FFF8F8] rounded-2xl p-5 border border-[#F3DADF]">
+                        <h4 class="font-semibold text-[#181818]">Balance</h4>
+                        <p class="text-sm text-[#7A7476] mt-1">Feel more grounded daily.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Programs -->
+        <section id="programs" class="mb-32">
+            <div class="text-center mb-14">
+                <h2 class="text-[2.3rem] font-bold text-[#181818] mb-4">Programs for everyday life</h2>
+                <p class="text-lg text-[#6F696B] font-light max-w-2xl mx-auto">
+                    Flexible sessions for personal wellbeing, mindful practice, and workplace wellness.
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <div
+                    class="rounded-[2rem] p-8 bg-white border border-[#F3DADF] shadow-sm hover:shadow-lg transition-all duration-300">
+                    <h3 class="text-2xl font-bold text-[#181818] mb-4">Personal Yoga</h3>
+                    <p class="text-[#746E70] leading-relaxed font-light mb-6">
+                        One-to-one or small-group classes built around your pace and goals.
+                    </p>
+                    <ul class="space-y-3 text-sm text-[#6C6668]">
+                        <li class="flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-[#E88490]"></span> Suitable for all levels
+                        </li>
+                        <li class="flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-[#E88490]"></span> Personal guidance
+                        </li>
+                        <li class="flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-[#E88490]"></span> Strength and flexibility
+                        </li>
+                    </ul>
+                </div>
+
+                <div
+                    class="rounded-[2rem] p-8 bg-[#FFF8F8] border border-[#F3DADF] shadow-sm hover:shadow-lg transition-all duration-300">
+                    <h3 class="text-2xl font-bold text-[#181818] mb-4">Meditation</h3>
+                    <p class="text-[#746E70] leading-relaxed font-light mb-6">
+                        Breath and stillness practices that help reduce stress and improve focus.
+                    </p>
+                    <ul class="space-y-3 text-sm text-[#6C6668]">
+                        <li class="flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-[#D96C7A]"></span> Guided breathing
+                        </li>
+                        <li class="flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-[#D96C7A]"></span> Relaxation support
+                        </li>
+                        <li class="flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-[#D96C7A]"></span> Mental clarity
+                        </li>
+                    </ul>
+                </div>
+
+                <div
+                    class="rounded-[2rem] p-8 bg-white border border-[#F3DADF] shadow-sm hover:shadow-lg transition-all duration-300">
+                    <h3 class="text-2xl font-bold text-[#181818] mb-4">Corporate Wellness</h3>
+                    <p class="text-[#746E70] leading-relaxed font-light mb-6">
+                        Workplace sessions that support energy, focus, and team wellbeing.
+                    </p>
+                    <ul class="space-y-3 text-sm text-[#6C6668]">
+                        <li class="flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-[#111111]"></span> Team sessions
+                        </li>
+                        <li class="flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-[#111111]"></span> Stress relief
+                        </li>
+                        <li class="flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-[#111111]"></span> Better focus
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- Why Yoga -->
+        <section
+            class="bg-gradient-to-br from-[#FFF4F6] to-[#FFF9FA] rounded-[3rem] p-10 md:p-16 mb-32 border border-[#F3DADF]">
+            <div class="text-center mb-12">
+                <h2 class="text-4xl md:text-5xl font-bold text-[#181818] mb-4">Find what feels good</h2>
+                <p class="text-lg text-[#6F696B] font-light max-w-3xl mx-auto">
+                    A simple practice that supports physical and mental wellbeing.
+                </p>
+            </div>
+
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
+                <div class="bg-white rounded-2xl p-6 text-center shadow-sm border border-[#F3DADF]">
+                    <h3 class="text-3xl font-bold text-[#E88490] mb-2">01</h3>
+                    <p class="text-[#181818] font-semibold">Breathing</p>
+                    <p class="text-sm text-[#7A7476] mt-2">Calmer and deeper breath</p>
+                </div>
+                <div class="bg-white rounded-2xl p-6 text-center shadow-sm border border-[#F3DADF]">
+                    <h3 class="text-3xl font-bold text-[#E88490] mb-2">02</h3>
+                    <p class="text-[#181818] font-semibold">Flexibility</p>
+                    <p class="text-sm text-[#7A7476] mt-2">More ease in movement</p>
+                </div>
+                <div class="bg-white rounded-2xl p-6 text-center shadow-sm border border-[#F3DADF]">
+                    <h3 class="text-3xl font-bold text-[#E88490] mb-2">03</h3>
+                    <p class="text-[#181818] font-semibold">Strength</p>
+                    <p class="text-sm text-[#7A7476] mt-2">Better body support</p>
+                </div>
+                <div class="bg-white rounded-2xl p-6 text-center shadow-sm border border-[#F3DADF]">
+                    <h3 class="text-3xl font-bold text-[#E88490] mb-2">04</h3>
+                    <p class="text-[#181818] font-semibold">Awareness</p>
+                    <p class="text-sm text-[#7A7476] mt-2">More balance every day</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Testimonials -->
+        <section class="mb-32">
+            <div class="text-center mb-14">
+                <h2 class="text-[2.3rem] font-bold text-[#181818] mb-4">What our students say</h2>
+                <p class="text-lg text-[#6F696B] font-light max-w-2xl mx-auto">
+                    Real experiences from people enjoying a more balanced lifestyle.
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <div class="bg-white border border-[#F3DADF] rounded-[2rem] p-8 shadow-sm">
+                    <p class="text-[#6C6668] leading-relaxed font-light">
+                        “A beautiful reset in the middle of a busy week.”
+                    </p>
+                    <div class="mt-6">
+                        <h4 class="font-semibold text-[#181818]">Happy student</h4>
+                        <p class="text-sm text-[#9A8F92]">Wellbeing session</p>
+                    </div>
+                </div>
+
+                <div class="bg-white border border-[#F3DADF] rounded-[2rem] p-8 shadow-sm">
+                    <p class="text-[#6C6668] leading-relaxed font-light">
+                        “I feel stronger, more flexible, and much calmer.”
+                    </p>
+                    <div class="mt-6">
+                        <h4 class="font-semibold text-[#181818]">Regular participant</h4>
+                        <p class="text-sm text-[#9A8F92]">Community class</p>
+                    </div>
+                </div>
+
+                <div class="bg-white border border-[#F3DADF] rounded-[2rem] p-8 shadow-sm">
+                    <p class="text-[#6C6668] leading-relaxed font-light">
+                        “A relaxed and uplifting experience for our team.”
+                    </p>
+                    <div class="mt-6">
+                        <h4 class="font-semibold text-[#181818]">Corporate client</h4>
+                        <p class="text-sm text-[#9A8F92]">Workplace programme</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- CTA -->
+        <section
+            class="bg-gradient-to-br from-[#FBECEF] to-[#FFF7F8] rounded-[3rem] p-12 md:p-20 text-center relative overflow-hidden mb-32 shadow-sm border border-[#F3DADF]">
+            <div class="relative z-10 flex flex-col items-center">
+                <div class="w-16 h-16 text-[#E88490] mb-8">
+                    <svg viewBox="0 0 24 24" fill="currentColor" class="w-full h-full">
+                        <path
+                            d="M12 2c1.8 2.1 2.8 4.3 2.8 6.5 0 1.7-.6 3.2-1.8 4.4 2.6-.5 4.6-2.8 4.6-5.6 0-2.4-1.5-4.5-3.7-5.3 3.8.6 6.8 3.9 6.8 7.9 0 4.4-3.6 8.1-8.1 8.1S4.5 14.4 4.5 10c0-4 3-7.3 6.8-7.9-2.2.8-3.7 2.9-3.7 5.3 0 2.8 2 5.1 4.6 5.6-1.2-1.2-1.8-2.7-1.8-4.4C10.4 6.3 11.4 4.1 12 2z" />
+                    </svg>
+                </div>
+                <h2 class="text-4xl md:text-5xl font-bold text-[#181818] mb-6">Ready to begin?</h2>
+                <p class="text-lg text-[#6F696B] max-w-2xl mx-auto mb-10 font-light leading-relaxed">
+                    Join Sattvalife Yoga and discover a calmer, healthier rhythm for daily life.
+                </p>
+                <div class="flex flex-wrap items-center justify-center gap-4">
+                    <button
+                        class="bg-[#111111] text-white px-8 py-4 rounded-full font-medium transition-all duration-300 hover:shadow-xl hover:-translate-y-1 hover:bg-[#2A2A2A]">
+                        Register Now
+                    </button>
+                    <button
+                        class="bg-white text-[#181818] px-8 py-4 rounded-full font-medium transition-all duration-300 hover:shadow-xl hover:-translate-y-1 border border-[#F3DADF]">
+                        Contact Us
+                    </button>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-[#FFF8F8] pt-20 pb-10 border-t border-[#F3DADF] w-full mt-auto text-sm">
+        <div class="max-w-[1280px] mx-auto px-6 sm:px-8 lg:px-10">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-12 mb-16">
+                <div class="col-span-1 md:col-span-2">
+                    <div class="flex items-center gap-2 mb-6">
+                        <div
+                            class="w-8 h-8 bg-[#111111] rounded-full flex items-center justify-center text-white p-1.5">
+                            <svg viewBox="0 0 24 24" fill="currentColor" class="w-full h-full">
+                                <path
+                                    d="M12 2c1.8 2.1 2.8 4.3 2.8 6.5 0 1.7-.6 3.2-1.8 4.4 2.6-.5 4.6-2.8 4.6-5.6 0-2.4-1.5-4.5-3.7-5.3 3.8.6 6.8 3.9 6.8 7.9 0 4.4-3.6 8.1-8.1 8.1S4.5 14.4 4.5 10c0-4 3-7.3 6.8-7.9-2.2.8-3.7 2.9-3.7 5.3 0 2.8 2 5.1 4.6 5.6-1.2-1.2-1.8-2.7-1.8-4.4C10.4 6.3 11.4 4.1 12 2z" />
+                            </svg>
+                        </div>
+                        <span class="font-bold text-lg text-[#181818]">Sattvalife Yoga</span>
+                    </div>
+                    <p class="text-[#7A7476] font-light max-w-md leading-relaxed">
+                        Personalised yoga classes for individuals, small groups, and workplaces.
+                    </p>
+                </div>
+
+                <div>
+                    <h4 class="font-bold text-[#181818] mb-6">Explore</h4>
+                    <ul class="space-y-4">
+                        <li><a href="#" class="text-[#7A7476] hover:text-[#D96C7A] font-light transition-colors">About
+                                Us</a></li>
+                        <li><a href="#"
+                                class="text-[#7A7476] hover:text-[#D96C7A] font-light transition-colors">Classes</a>
+                        </li>
+                        <li><a href="#"
+                                class="text-[#7A7476] hover:text-[#D96C7A] font-light transition-colors">Corporate
+                                Programme</a></li>
+                    </ul>
+                </div>
+
+                <div>
+                    <h4 class="font-bold text-[#181818] mb-6">Support</h4>
+                    <ul class="space-y-4">
+                        <li><a href="#"
+                                class="text-[#7A7476] hover:text-[#D96C7A] font-light transition-colors">Registration</a>
+                        </li>
+                        <li><a href="#" class="text-[#7A7476] hover:text-[#D96C7A] font-light transition-colors">Contact
+                                Us</a></li>
+                        <li><a href="#" class="text-[#7A7476] hover:text-[#D96C7A] font-light transition-colors">Terms &
+                                Conditions</a></li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="pt-8 flex flex-col md:flex-row justify-between items-center gap-4 border-t border-[#F3DADF]">
+                <p class="text-[#9A8F92] font-light">&copy; 2024 SattvaLife Yoga. All rights reserved.</p>
+                <div class="flex gap-4">
+                    <a href="#"
+                        class="w-10 h-10 bg-[#FBECEF] rounded-full flex items-center justify-center text-[#7A7476] hover:bg-[#F7DDE2] hover:text-[#181818] transition-colors">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9c-1.657 0-3-4.03-3-9s1.343-9 3-9m0 18c1.657 0 3-4.03 3-9s-1.343-9-3-9">
+                            </path>
+                        </svg>
+                    </a>
+                    <a href="#"
+                        class="w-10 h-10 bg-[#FBECEF] rounded-full flex items-center justify-center text-[#7A7476] hover:bg-[#F7DDE2] hover:text-[#181818] transition-colors">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1">
+                            </path>
+                        </svg>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+</div>
+
+{% endblock %}

@@ -1,0 +1,1270 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Yoga Camera</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <style>
+        html,
+        body {
+            height: 100%;
+            margin: 0;
+        }
+
+        body {
+            overflow: hidden;
+        }
+
+        .glass-card {
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.07));
+            backdrop-filter: blur(14px);
+            border: 1px solid rgba(255, 255, 255, 0.10);
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.22);
+        }
+
+        .camera-frame {
+            transition: box-shadow 0.3s ease, border-color 0.3s ease, transform 0.2s ease;
+        }
+
+        .outline-guide {
+            opacity: 0.42;
+            transition: all 0.25s ease;
+            mix-blend-mode: screen;
+        }
+
+        .outline-red {
+            filter: brightness(0) saturate(100%) invert(33%) sepia(90%) saturate(2800%) hue-rotate(337deg) brightness(98%) contrast(92%);
+        }
+
+        .outline-yellow {
+            filter: brightness(0) saturate(100%) invert(73%) sepia(50%) saturate(1350%) hue-rotate(357deg) brightness(99%) contrast(96%);
+        }
+
+        .outline-green {
+            filter: brightness(0) saturate(100%) invert(65%) sepia(59%) saturate(531%) hue-rotate(93deg) brightness(92%) contrast(92%);
+        }
+
+        .pose-incorrect {
+            border-color: rgba(239, 68, 68, 0.75) !important;
+            animation: blinkRed 1s infinite;
+        }
+
+        .pose-close {
+            border-color: rgba(250, 204, 21, 0.75) !important;
+            animation: blinkYellow 1s infinite;
+        }
+
+        .pose-correct {
+            border-color: rgba(34, 197, 94, 0.75) !important;
+            animation: blinkGreen 1s infinite;
+        }
+
+        .feedback-red {
+            border-color: rgba(239, 68, 68, 0.75) !important;
+            animation: blinkRed 1s infinite;
+        }
+
+        .feedback-yellow {
+            border-color: rgba(250, 204, 21, 0.75) !important;
+            animation: blinkYellow 1s infinite;
+        }
+
+        .feedback-green {
+            border-color: rgba(34, 197, 94, 0.75) !important;
+            animation: blinkGreen 1s infinite;
+        }
+
+        @keyframes blinkRed {
+            0%, 100% {
+                box-shadow:
+                    0 0 0 2px rgba(239, 68, 68, 0.14),
+                    0 0 18px rgba(239, 68, 68, 0.22),
+                    inset 0 0 18px rgba(239, 68, 68, 0.05);
+            }
+
+            50% {
+                box-shadow:
+                    0 0 0 5px rgba(239, 68, 68, 0.22),
+                    0 0 34px rgba(239, 68, 68, 0.35),
+                    inset 0 0 25px rgba(239, 68, 68, 0.10);
+            }
+        }
+
+        @keyframes blinkYellow {
+            0%, 100% {
+                box-shadow:
+                    0 0 0 2px rgba(250, 204, 21, 0.14),
+                    0 0 18px rgba(250, 204, 21, 0.22),
+                    inset 0 0 18px rgba(250, 204, 21, 0.05);
+            }
+
+            50% {
+                box-shadow:
+                    0 0 0 5px rgba(250, 204, 21, 0.22),
+                    0 0 34px rgba(250, 204, 21, 0.35),
+                    inset 0 0 25px rgba(250, 204, 21, 0.10);
+            }
+        }
+
+        @keyframes blinkGreen {
+            0%, 100% {
+                box-shadow:
+                    0 0 0 2px rgba(34, 197, 94, 0.14),
+                    0 0 18px rgba(34, 197, 94, 0.22),
+                    inset 0 0 18px rgba(34, 197, 94, 0.05);
+            }
+
+            50% {
+                box-shadow:
+                    0 0 0 5px rgba(34, 197, 94, 0.22),
+                    0 0 34px rgba(34, 197, 94, 0.35),
+                    inset 0 0 25px rgba(34, 197, 94, 0.10);
+            }
+        }
+
+        .floating-guide-btn {
+            position: fixed;
+            top: 18px;
+            right: 18px;
+            z-index: 70;
+        }
+
+        .guide-panel {
+            position: fixed;
+            top: 0;
+            right: 0;
+            height: 100vh;
+            width: min(420px, 92vw);
+            z-index: 60;
+            transform: translateX(100%);
+            transition: transform 0.35s ease;
+            background: linear-gradient(180deg, rgba(15, 23, 42, 0.97), rgba(6, 78, 59, 0.96));
+            backdrop-filter: blur(16px);
+            border-left: 1px solid rgba(255, 255, 255, 0.12);
+            box-shadow: -10px 0 30px rgba(0, 0, 0, 0.35);
+        }
+
+        .guide-panel.open {
+            transform: translateX(0);
+        }
+
+        .guide-backdrop {
+            position: fixed;
+            inset: 0;
+            z-index: 50;
+            background: rgba(0, 0, 0, 0.35);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+
+        .guide-backdrop.show {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .camera-panel {
+            position: relative;
+            z-index: 30;
+        }
+
+        .right-panel {
+            position: relative;
+            z-index: 10;
+        }
+
+        .camera-wrap {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: visible;
+            z-index: 40;
+            width: 100%;
+        }
+
+        .camera-buttons {
+            position: absolute;
+            right: -96px;
+            top: 50%;
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            z-index: 999;
+        }
+
+        .camera-btn {
+            width: 90px;
+            height: 56px;
+            border-radius: 14px;
+            font-size: 0.95rem;
+            font-weight: 700;
+            box-shadow: 0 12px 28px rgba(0, 0, 0, 0.30);
+        }
+
+        .signal-dot {
+            width: 16px;
+            height: 16px;
+            border-radius: 9999px;
+            background: #64748b;
+        }
+
+        .metric-box {
+            background: rgba(15, 23, 42, 0.38);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .angle-section-hidden {
+            display: none;
+        }
+
+        .angle-section-visible {
+            display: block;
+        }
+
+        .freeze-layer {
+            position: absolute;
+            inset: 0;
+            z-index: 25;
+            display: none;
+            background: black;
+        }
+
+        .freeze-layer.show {
+            display: block;
+        }
+
+        .freeze-layer img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+            background: black;
+        }
+
+        .camera-status-banner {
+            position: absolute;
+            left: 50%;
+            bottom: 16px;
+            transform: translateX(-50%);
+            z-index: 35;
+            padding: 10px 18px;
+            border-radius: 16px;
+            background: rgba(15, 23, 42, 0.72);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            color: white;
+            font-weight: 600;
+            backdrop-filter: blur(8px);
+            text-align: center;
+            max-width: 88%;
+        }
+
+        .instruction-main-box {
+            background: linear-gradient(180deg, rgba(250, 204, 21, 0.12), rgba(15, 23, 42, 0.22));
+            border: 2px solid rgba(250, 204, 21, 0.40);
+            box-shadow: 0 0 30px rgba(250, 204, 21, 0.18);
+        }
+
+        .instruction-feedback-box {
+            background: linear-gradient(180deg, rgba(16, 185, 129, 0.08), rgba(15, 23, 42, 0.18));
+            border: 2px solid rgba(16, 185, 129, 0.20);
+            box-shadow: 0 0 24px rgba(16, 185, 129, 0.10);
+        }
+
+        .big-main-feedback {
+            font-size: clamp(1.8rem, 2.8vw, 3.8rem);
+            font-weight: 800;
+            line-height: 1.1;
+            letter-spacing: -0.02em;
+        }
+
+        .big-guidance {
+            font-size: clamp(1.5rem, 2.1vw, 2.6rem);
+            font-weight: 800;
+            line-height: 1.18;
+        }
+
+        .metric-value-lg {
+            font-size: clamp(1.45rem, 1.8vw, 2.2rem);
+            font-weight: 800;
+            line-height: 1.1;
+        }
+
+        .metric-value-xl {
+            font-size: clamp(2rem, 2.6vw, 3.5rem);
+            font-weight: 900;
+            line-height: 1.0;
+            letter-spacing: -0.02em;
+        }
+
+        .left-panel {
+            overflow: hidden;
+        }
+
+        .tips-box {
+            flex: 1;
+        }
+
+        .tips-list {
+            margin: 0;
+            padding-left: 1.3rem;
+            font-size: 1.08rem;
+            line-height: 1.55;
+            color: #e2e8f0;
+            display: flex;
+            flex-direction: column;
+            gap: 0.6rem;
+        }
+
+        .tips-list li::marker {
+            color: #6ee7b7;
+        }
+
+        @media (max-height: 900px) {
+            .tips-list {
+                font-size: 0.98rem;
+                gap: 0.45rem;
+            }
+
+            .metric-value-xl {
+                font-size: clamp(1.7rem, 2.2vw, 3rem);
+            }
+
+            .metric-value-lg {
+                font-size: clamp(1.2rem, 1.4vw, 1.9rem);
+            }
+        }
+
+        @media (max-width: 1400px) {
+            .camera-buttons {
+                right: -82px;
+            }
+        }
+
+        @media (max-width: 1200px) {
+            body {
+                overflow: auto;
+            }
+
+            main {
+                height: auto !important;
+                min-height: 100vh;
+            }
+
+            .main-layout {
+                grid-template-columns: 1fr !important;
+                height: auto !important;
+            }
+
+            .camera-buttons {
+                position: static;
+                transform: none;
+                margin-top: 16px;
+                flex-direction: row;
+                justify-content: center;
+            }
+
+            .camera-wrap {
+                flex-direction: column;
+            }
+
+            .left-panel {
+                overflow: visible;
+            }
+        }
+
+        .mirrored-layer {
+            transform: scaleX(-1);
+            transform-origin: center;
+        }
+    </style>
+</head>
+
+<body class="bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950 text-white">
+
+    <button type="button" onclick="toggleGuide()"
+        class="floating-guide-btn px-5 py-3 rounded-2xl bg-emerald-500 hover:bg-emerald-600 transition font-semibold shadow-xl">
+        Guide
+    </button>
+
+    <div id="guideBackdrop" class="guide-backdrop" onclick="closeGuide()"></div>
+
+    <aside id="guidePanel" class="guide-panel p-6 flex flex-col">
+        <div class="flex items-center justify-between mb-5 shrink-0">
+            <div>
+                <h2 class="text-3xl font-bold text-emerald-300">Tree Pose</h2>
+                <p class="mt-2 text-slate-300 text-base">
+                    Improve your balance and concentration with a calm and stable standing posture.
+                </p>
+            </div>
+
+            <button type="button" onclick="closeGuide()"
+                class="ml-4 px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/10">
+                ✕
+            </button>
+        </div>
+
+        <div class="rounded-3xl overflow-hidden border border-white/10 shrink-0">
+            <img src="{% static 'Poses/TreeEg.jpg' %}" alt="Tree Pose" class="w-full h-[250px] object-cover">
+        </div>
+
+        <div class="mt-5 min-h-0 flex flex-col overflow-hidden">
+            <h3 class="text-2xl font-semibold mb-4 shrink-0">How to do Tree Pose</h3>
+
+            <div class="space-y-4 text-slate-300 text-lg leading-relaxed overflow-auto pr-2">
+                <div class="flex gap-4 items-start">
+                    <span class="w-10 h-10 flex items-center justify-center rounded-full bg-emerald-500 text-white text-sm font-bold shrink-0">1</span>
+                    <p>Stand straight with one standing leg.</p>
+                </div>
+                <div class="flex gap-4 items-start">
+                    <span class="w-10 h-10 flex items-center justify-center rounded-full bg-emerald-500 text-white text-sm font-bold shrink-0">2</span>
+                    <p>Lift the other foot and place it on the opposite inner calf or thigh.</p>
+                </div>
+                <div class="flex gap-4 items-start">
+                    <span class="w-10 h-10 flex items-center justify-center rounded-full bg-emerald-500 text-white text-sm font-bold shrink-0">3</span>
+                    <p>Open the bent knee outward.</p>
+                </div>
+                <div class="flex gap-4 items-start">
+                    <span class="w-10 h-10 flex items-center justify-center rounded-full bg-emerald-500 text-white text-sm font-bold shrink-0">4</span>
+                    <p>Bring your hands to prayer or raise them overhead.</p>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <main class="h-screen max-w-[1880px] mx-auto px-4 py-6">
+        <section class="main-layout h-full grid grid-cols-[350px_520px_minmax(360px,1fr)] gap-5 items-stretch">
+
+            <aside class="left-panel flex flex-col gap-4 h-full">
+                <div class="glass-card rounded-[2rem] p-5">
+                    <h3 class="text-3xl font-bold text-emerald-300 mb-5">Live Result</h3>
+
+                    <div class="space-y-4">
+                        <div class="metric-box rounded-3xl p-4">
+                            <p class="text-slate-300 text-sm mb-2">Pose</p>
+                            <p id="poseText" class="metric-value-xl">-</p>
+                        </div>
+
+                        <div class="metric-box rounded-3xl p-4">
+                            <p class="text-slate-300 text-sm mb-2">Status</p>
+                            <p id="statusText" class="metric-value-lg">-</p>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-3">
+                            <div class="metric-box rounded-3xl p-4">
+                                <p class="text-slate-300 text-sm mb-2">Confidence</p>
+                                <p id="confidenceText" class="metric-value-lg">-</p>
+                            </div>
+                            <div class="metric-box rounded-3xl p-4">
+                                <p class="text-slate-300 text-sm mb-2">Score</p>
+                                <p id="scoreText" class="metric-value-lg">-</p>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-3">
+                            <div class="metric-box rounded-3xl p-4">
+                                <p class="text-slate-300 text-sm mb-2">Quality</p>
+                                <p id="qualityText" class="metric-value-lg">-</p>
+                            </div>
+                            <div class="metric-box rounded-3xl p-4">
+                                <p class="text-slate-300 text-sm mb-2">Hold</p>
+                                <p id="holdText" class="metric-value-lg">-</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="glass-card tips-box rounded-[2rem] p-5">
+                    <div class="flex items-start justify-between mb-4 gap-4">
+                        <h3 class="text-3xl font-bold text-emerald-300 leading-tight">Detailed Tips</h3>
+                        <button type="button" id="toggleAnglesBtn" onclick="toggleAngles()"
+                            class="px-5 py-3 rounded-xl bg-white/10 hover:bg-white/20 border border-white/10 text-lg font-medium shrink-0">
+                            Show Angles
+                        </button>
+                    </div>
+
+                    <div id="anglesSection" class="angle-section-hidden">
+                        <div class="grid grid-cols-2 gap-x-6 gap-y-3 mb-5 text-base">
+                            <div class="flex justify-between gap-3">
+                                <span class="text-slate-300">Left Knee</span>
+                                <span id="leftKneeAngle" class="font-semibold">-</span>
+                            </div>
+                            <div class="flex justify-between gap-3">
+                                <span class="text-slate-300">Right Knee</span>
+                                <span id="rightKneeAngle" class="font-semibold">-</span>
+                            </div>
+                            <div class="flex justify-between gap-3">
+                                <span class="text-slate-300">Left Elbow</span>
+                                <span id="leftElbowAngle" class="font-semibold">-</span>
+                            </div>
+                            <div class="flex justify-between gap-3">
+                                <span class="text-slate-300">Right Elbow</span>
+                                <span id="rightElbowAngle" class="font-semibold">-</span>
+                            </div>
+                            <div class="flex justify-between gap-3 col-span-2">
+                                <span class="text-slate-300">Torso Tilt</span>
+                                <span id="torsoTilt" class="font-semibold">-</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <ul id="detailsList" class="tips-list">
+                        <li>No tips yet</li>
+                    </ul>
+                </div>
+            </aside>
+
+            <section class="glass-card rounded-[2rem] p-5 h-full flex flex-col camera-panel">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center gap-4">
+                        <h2 class="text-4xl font-bold">Live Camera</h2>
+                        <span id="cameraStateBadge"
+                            class="px-4 py-2 rounded-full text-lg font-semibold bg-amber-500/20 text-amber-300 border border-amber-300/20">
+                            Waiting
+                        </span>
+                    </div>
+                </div>
+
+                <div class="flex-1 flex items-center justify-center overflow-visible">
+                    <div class="camera-wrap">
+                        <div id="cameraFrame"
+                            class="camera-frame relative rounded-[2rem] overflow-hidden bg-black border border-white/10 w-[360px] xl:w-[390px] 2xl:w-[420px] h-[78vh] max-h-[860px] min-h-[620px] shadow-[0_24px_60px_rgba(0,0,0,0.35)]">
+
+                            <video id="video" autoplay playsinline muted
+                                class="absolute inset-0 w-full h-full object-cover bg-black z-0 mirrored-layer"></video>
+
+                            <div id="freezeLayer" class="freeze-layer">
+                                <img id="freezeFrameImage" alt="Frozen perfect pose frame">
+                            </div>
+
+                            <img id="poseOutline" src="{% static 'Poses/tree_outline.png' %}"
+                                alt="Tree Pose Outline Guide"
+                                class="outline-guide outline-yellow absolute left-1/2 bottom-0 -translate-x-1/2 w-auto max-w-none object-contain pointer-events-none z-10"
+                                style="height: 95%;">
+
+                            <div id="poseOverlayBadge"
+                                class="absolute top-4 left-4 px-4 py-3 rounded-2xl bg-amber-500/80 text-white text-lg font-semibold border border-amber-300/30 z-20">
+                                Waiting...
+                            </div>
+
+                            <div id="cameraStatusBanner" class="camera-status-banner">
+                                Camera stopped
+                            </div>
+
+                            <canvas id="overlay"
+                                class="absolute inset-0 w-full h-full pointer-events-none z-30"></canvas>
+                            <canvas id="captureCanvas" class="hidden"></canvas>
+                        </div>
+
+                        <div class="camera-buttons">
+                            <button type="button" id="startBtn" onclick="startCamera()"
+                                class="camera-btn bg-emerald-500 hover:bg-emerald-600 transition">
+                                Start
+                            </button>
+
+                            <button type="button" id="stopBtn" onclick="stopCamera()"
+                                class="camera-btn bg-rose-500 hover:bg-rose-600 transition">
+                                Stop
+                            </button>
+
+                            <button type="button" id="resumeBtn" onclick="resumeCamera()"
+                                class="camera-btn bg-sky-500 hover:bg-sky-600 transition">
+                                Resume
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <aside class="glass-card rounded-[2rem] p-5 h-full flex flex-col right-panel">
+                <div class="flex items-center justify-between mb-6">
+                    <h3 class="text-4xl font-bold text-emerald-300">Live Instruction</h3>
+                    <div id="miniSignal" class="signal-dot"></div>
+                </div>
+
+                <div id="liveInstructionBox" class="instruction-main-box rounded-[2rem] p-6 mb-5">
+                    <p class="text-slate-300 text-lg mb-3">Main Feedback</p>
+                    <p id="liveInstructionText" class="big-main-feedback">
+                        Waiting for pose
+                    </p>
+                </div>
+
+                <div id="liveFeedbackPanel" class="instruction-feedback-box rounded-[2rem] p-6 flex-1">
+                    <p class="text-slate-300 text-lg mb-4">Current Guidance</p>
+                    <p id="guidanceHeadline" class="big-guidance mb-5">
+                        Stand still and begin the pose.
+                    </p>
+
+                    <div class="space-y-4 text-2xl text-slate-200">
+                        <p><strong>Model Pose:</strong> <span id="modelPoseText">-</span></p>
+                        <p><strong>Live Status:</strong> <span id="liveStatusText">Waiting...</span></p>
+                        <p><strong>Pose Score:</strong> <span id="liveScoreText">-</span></p>
+                        <p><strong>Quality:</strong> <span id="rightQualityText">-</span></p>
+                        <p><strong>Hold:</strong> <span id="rightHoldText">-</span></p>
+                    </div>
+                </div>
+            </aside>
+
+        </section>
+    </main>
+
+<script>
+    const video = document.getElementById("video");
+    const overlay = document.getElementById("overlay");
+    const overlayCtx = overlay.getContext("2d");
+    const captureCanvas = document.getElementById("captureCanvas");
+    const poseOutline = document.getElementById("poseOutline");
+    const cameraFrame = document.getElementById("cameraFrame");
+    const guidePanel = document.getElementById("guidePanel");
+    const guideBackdrop = document.getElementById("guideBackdrop");
+    const liveFeedbackPanel = document.getElementById("liveFeedbackPanel");
+    const miniSignal = document.getElementById("miniSignal");
+    const liveInstructionBox = document.getElementById("liveInstructionBox");
+    const anglesSection = document.getElementById("anglesSection");
+    const toggleAnglesBtn = document.getElementById("toggleAnglesBtn");
+    const freezeLayer = document.getElementById("freezeLayer");
+    const freezeFrameImage = document.getElementById("freezeFrameImage");
+    const cameraStatusBanner = document.getElementById("cameraStatusBanner");
+    const startBtn = document.getElementById("startBtn");
+    const stopBtn = document.getElementById("stopBtn");
+    const resumeBtn = document.getElementById("resumeBtn");
+
+    let stream = null;
+    let predictionTimer = null;
+    let anglesVisible = false;
+    let isFrozen = false;
+    let isStarting = false;
+    let requestInFlight = false;
+    let perfectHoldFrames = 0;
+    let lastPayload = null;
+
+    const POLL_INTERVAL_MS = 850;
+    const FREEZE_THRESHOLD_FRAMES = 2;
+    const MIRROR_PREVIEW = true;
+
+    function toggleGuide() {
+        guidePanel.classList.toggle("open");
+        guideBackdrop.classList.toggle("show");
+    }
+
+    function closeGuide() {
+        guidePanel.classList.remove("open");
+        guideBackdrop.classList.remove("show");
+    }
+
+    function toggleAngles() {
+        anglesVisible = !anglesVisible;
+
+        if (anglesVisible) {
+            anglesSection.classList.remove("angle-section-hidden");
+            anglesSection.classList.add("angle-section-visible");
+            toggleAnglesBtn.textContent = "Hide Angles";
+        } else {
+            anglesSection.classList.remove("angle-section-visible");
+            anglesSection.classList.add("angle-section-hidden");
+            toggleAnglesBtn.textContent = "Show Angles";
+        }
+
+        if (lastPayload) {
+            drawOverlay(lastPayload);
+        }
+    }
+
+    function resizeOverlay() {
+        const rect = cameraFrame.getBoundingClientRect();
+        overlay.width = rect.width;
+        overlay.height = rect.height;
+
+        if (lastPayload) {
+            drawOverlay(lastPayload);
+        }
+    }
+
+    function setOutlineState(state) {
+        poseOutline.classList.remove("outline-red", "outline-yellow", "outline-green");
+
+        if (state === "green") {
+            poseOutline.classList.add("outline-green");
+        } else if (state === "yellow") {
+            poseOutline.classList.add("outline-yellow");
+        } else {
+            poseOutline.classList.add("outline-red");
+        }
+    }
+
+    function setCameraBanner(text) {
+        cameraStatusBanner.textContent = text;
+    }
+
+    function formatConfidence(value) {
+        if (value === null || value === undefined || value === "-") return "-";
+        const num = Number(value);
+        if (Number.isNaN(num)) return "-";
+        return `${(num * 100).toFixed(1)}%`;
+    }
+
+    function formatHold(value) {
+        if (value === null || value === undefined || value === "-") return "-";
+        const num = Number(value);
+        if (Number.isNaN(num)) return "-";
+        return `${num.toFixed(1)}s`;
+    }
+
+    function clearPredictionLoop() {
+        if (predictionTimer) {
+            clearInterval(predictionTimer);
+            predictionTimer = null;
+        }
+    }
+
+    function startPredictionLoop() {
+        clearPredictionLoop();
+        predictionTimer = setInterval(captureAndPredict, POLL_INTERVAL_MS);
+    }
+
+    function setButtonsState() {
+        startBtn.disabled = !!stream || isStarting;
+        stopBtn.disabled = !stream;
+        resumeBtn.disabled = !stream || !isFrozen;
+
+        startBtn.classList.toggle("opacity-60", startBtn.disabled);
+        stopBtn.classList.toggle("opacity-60", stopBtn.disabled);
+        resumeBtn.classList.toggle("opacity-60", resumeBtn.disabled);
+    }
+
+    function updateOutline(status, score = 0, pose = "") {
+        const s = String(status || "").toLowerCase();
+        const p = String(pose || "").toLowerCase();
+
+        if (score >= 90 || s.includes("perfect") || p.includes("correct tree")) {
+            setOutlineState("green");
+        } else if (
+            score >= 50 ||
+            s.includes("good") ||
+            s.includes("warning") ||
+            p.includes("tree")
+        ) {
+            setOutlineState("yellow");
+        } else {
+            setOutlineState("red");
+        }
+    }
+
+    function updateCameraGlow(score = 0, status = "", pose = "") {
+        cameraFrame.classList.remove("pose-incorrect", "pose-close", "pose-correct");
+
+        const s = String(status || "").toLowerCase();
+        const p = String(pose || "").toLowerCase();
+
+        if (score >= 90 || s.includes("perfect") || p.includes("correct tree")) {
+            cameraFrame.classList.add("pose-correct");
+        } else if (
+            score >= 50 ||
+            s.includes("good") ||
+            s.includes("warning") ||
+            p.includes("tree")
+        ) {
+            cameraFrame.classList.add("pose-close");
+        } else {
+            cameraFrame.classList.add("pose-incorrect");
+        }
+    }
+
+    function updateFeedbackBlink(status = "", score = 0, pose = "") {
+        liveFeedbackPanel.classList.remove("feedback-red", "feedback-yellow", "feedback-green");
+        liveInstructionBox.classList.remove("feedback-red", "feedback-yellow", "feedback-green");
+
+        const s = String(status || "").toLowerCase();
+        const p = String(pose || "").toLowerCase();
+
+        if (score >= 90 || s.includes("perfect") || p.includes("correct tree")) {
+            liveFeedbackPanel.classList.add("feedback-green");
+            liveInstructionBox.classList.add("feedback-green");
+            miniSignal.className = "signal-dot bg-emerald-400 shadow-[0_0_18px_rgba(52,211,153,0.9)]";
+        } else if (
+            score >= 50 ||
+            s.includes("good") ||
+            s.includes("warning") ||
+            p.includes("tree")
+        ) {
+            liveFeedbackPanel.classList.add("feedback-yellow");
+            liveInstructionBox.classList.add("feedback-yellow");
+            miniSignal.className = "signal-dot bg-amber-300 shadow-[0_0_18px_rgba(252,211,77,0.9)]";
+        } else {
+            liveFeedbackPanel.classList.add("feedback-red");
+            liveInstructionBox.classList.add("feedback-red");
+            miniSignal.className = "signal-dot bg-rose-400 shadow-[0_0_18px_rgba(251,113,133,0.9)]";
+        }
+    }
+
+    function updateOverlayBadge(data) {
+        const badge = document.getElementById("poseOverlayBadge");
+        const cameraStateBadge = document.getElementById("cameraStateBadge");
+
+        const pose = data.pose || "Unknown";
+        const status = data.status || "Waiting";
+        const score = data.score ?? "-";
+        const numericScore = Number(data.score || 0);
+        const lowerStatus = String(status).toLowerCase();
+        const lowerPose = String(pose).toLowerCase();
+
+        badge.textContent = `${pose} - ${status}${score !== "-" ? ` (${score})` : ""}`;
+        cameraStateBadge.textContent = status;
+
+        if (numericScore >= 90 || lowerStatus.includes("perfect") || lowerPose.includes("correct tree")) {
+            badge.className = "absolute top-4 left-4 px-4 py-3 rounded-2xl bg-emerald-500/80 text-white text-lg font-semibold border border-emerald-300/30 z-20";
+            cameraStateBadge.className = "px-4 py-2 rounded-full text-lg font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-300/20";
+        } else if (
+            numericScore >= 50 ||
+            lowerStatus.includes("good") ||
+            lowerStatus.includes("warning") ||
+            lowerPose.includes("tree")
+        ) {
+            badge.className = "absolute top-4 left-4 px-4 py-3 rounded-2xl bg-amber-500/80 text-white text-lg font-semibold border border-amber-300/30 z-20";
+            cameraStateBadge.className = "px-4 py-2 rounded-full text-lg font-semibold bg-amber-500/20 text-amber-300 border border-amber-300/20";
+        } else {
+            badge.className = "absolute top-4 left-4 px-4 py-3 rounded-2xl bg-rose-500/80 text-white text-lg font-semibold border border-rose-300/30 z-20";
+            cameraStateBadge.className = "px-4 py-2 rounded-full text-lg font-semibold bg-rose-500/20 text-rose-300 border border-rose-300/20";
+        }
+    }
+
+    function drawPoint(x, y, color, radius = 5) {
+        overlayCtx.beginPath();
+        overlayCtx.arc(x, y, radius, 0, Math.PI * 2);
+        overlayCtx.fillStyle = color;
+        overlayCtx.fill();
+    }
+
+    function drawText(text, x, y, color = "#ffff00") {
+        overlayCtx.font = "bold 16px Arial";
+        overlayCtx.fillStyle = "rgba(0,0,0,0.55)";
+        overlayCtx.fillRect(x - 6, y - 20, 48, 24);
+        overlayCtx.fillStyle = color;
+        overlayCtx.fillText(text, x, y);
+    }
+
+    function shouldHideOverlay(data) {
+        const pose = String(data?.pose || "").toLowerCase();
+        return (
+            pose.includes("unknown") ||
+            pose.includes("low light") ||
+            pose.includes("body not visible") ||
+            pose.includes("not tree pose") ||
+            pose.includes("not ready yet")
+        );
+    }
+
+    function drawOverlay(data) {
+        overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
+
+        if (!data || !data.points || data.points.length === 0) return;
+        if (shouldHideOverlay(data)) return;
+
+        const boxW = overlay.width;
+        const boxH = overlay.height;
+        const points = data.points || [];
+        const angleTexts = data.angle_texts || [];
+
+        points.forEach(point => {
+            if (!point || point.visible === false) return;
+
+            let x = Number(point.x) * boxW;
+            let y = Number(point.y) * boxH;
+
+            if (MIRROR_PREVIEW) {
+                x = boxW - x;
+            }
+
+            drawPoint(x, y, point.color || "#c7c7c7", point.radius || 5);
+        });
+
+        if (anglesVisible) {
+            angleTexts.forEach(item => {
+                let x = Number(item.x) * boxW;
+                let y = Number(item.y) * boxH;
+
+                if (MIRROR_PREVIEW) {
+                    x = boxW - x;
+                }
+
+                drawText(item.text, x + 10, y - 10, item.color || "#ffff00");
+            });
+        }
+    }
+
+    function autoScaleOutlineFromPoints(points) {
+        if (!poseOutline || !cameraFrame || !points || points.length === 0) return;
+
+        const visiblePoints = points.filter(p => p && p.visible !== false);
+        if (visiblePoints.length === 0) return;
+
+        const wristPoints = visiblePoints.filter(
+            p => p.name === "left_wrist" || p.name === "right_wrist"
+        );
+
+        const anklePoints = visiblePoints.filter(
+            p => p.name === "left_ankle" || p.name === "right_ankle"
+        );
+
+        const topY = wristPoints.length
+            ? Math.min(...wristPoints.map(p => p.y))
+            : Math.min(...visiblePoints.map(p => p.y));
+
+        const bottomY = anklePoints.length
+            ? Math.max(...anklePoints.map(p => p.y))
+            : Math.max(...visiblePoints.map(p => p.y));
+
+        const detectedHeight = (bottomY - topY) * cameraFrame.clientHeight;
+        const frameHeight = cameraFrame.clientHeight;
+
+        if (!frameHeight || detectedHeight < 120) return;
+
+        let targetHeightPx = detectedHeight * 1.08;
+        const minHeight = frameHeight * 0.72;
+        const maxHeight = frameHeight * 0.98;
+
+        targetHeightPx = Math.max(minHeight, Math.min(maxHeight, targetHeightPx));
+        poseOutline.style.height = `${targetHeightPx}px`;
+    }
+
+    function resetOutlineScale() {
+        poseOutline.style.height = "95%";
+    }
+
+    function freezeCurrentFrame() {
+        if (!video.videoWidth || !video.videoHeight) return;
+
+        const tempCanvas = document.createElement("canvas");
+        tempCanvas.width = video.videoWidth;
+        tempCanvas.height = video.videoHeight;
+        const tempCtx = tempCanvas.getContext("2d");
+
+        tempCtx.translate(tempCanvas.width, 0);
+        tempCtx.scale(-1, 1);
+        tempCtx.drawImage(video, 0, 0, tempCanvas.width, tempCanvas.height);
+
+        freezeFrameImage.src = tempCanvas.toDataURL("image/jpeg");
+        freezeLayer.classList.add("show");
+        isFrozen = true;
+        clearPredictionLoop();
+        setCameraBanner("Perfect hold detected - screen paused");
+        setButtonsState();
+    }
+
+    function maybeFreezeForPerfectPose(data) {
+        const pose = String(data.pose || "").toLowerCase();
+        const status = String(data.status || "").toLowerCase();
+        const score = Number(data.score || 0);
+        const quality = String(data.quality || "").toLowerCase();
+
+        const isPerfect =
+            data.perfect_hold === true ||
+            pose.includes("correct tree") ||
+            (status.includes("perfect") && quality.includes("perfect")) ||
+            score >= 95;
+
+        if (isPerfect) {
+            perfectHoldFrames += 1;
+        } else {
+            perfectHoldFrames = 0;
+        }
+
+        if (!isFrozen && perfectHoldFrames >= FREEZE_THRESHOLD_FRAMES) {
+            freezeCurrentFrame();
+        }
+    }
+
+    function resumeCamera() {
+        if (!stream) return;
+
+        isFrozen = false;
+        perfectHoldFrames = 0;
+        freezeLayer.classList.remove("show");
+        overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
+        setCameraBanner("Camera resumed");
+        startPredictionLoop();
+        setButtonsState();
+    }
+
+    function resetUI() {
+        lastPayload = null;
+        perfectHoldFrames = 0;
+
+        document.getElementById("poseText").textContent = "-";
+        document.getElementById("statusText").textContent = "-";
+        document.getElementById("confidenceText").textContent = "-";
+        document.getElementById("scoreText").textContent = "-";
+        document.getElementById("qualityText").textContent = "-";
+        document.getElementById("holdText").textContent = "-";
+
+        document.getElementById("modelPoseText").textContent = "-";
+        document.getElementById("liveStatusText").textContent = "Waiting...";
+        document.getElementById("liveScoreText").textContent = "-";
+        document.getElementById("rightQualityText").textContent = "-";
+        document.getElementById("rightHoldText").textContent = "-";
+        document.getElementById("liveInstructionText").textContent = "Waiting for pose";
+        document.getElementById("guidanceHeadline").textContent = "Stand still and begin the pose.";
+
+        document.getElementById("leftKneeAngle").textContent = "-";
+        document.getElementById("rightKneeAngle").textContent = "-";
+        document.getElementById("leftElbowAngle").textContent = "-";
+        document.getElementById("rightElbowAngle").textContent = "-";
+        document.getElementById("torsoTilt").textContent = "-";
+
+        const detailsList = document.getElementById("detailsList");
+        detailsList.innerHTML = "<li>No tips yet</li>";
+
+        const badge = document.getElementById("poseOverlayBadge");
+        const cameraStateBadge = document.getElementById("cameraStateBadge");
+
+        badge.textContent = "Waiting...";
+        badge.className = "absolute top-4 left-4 px-4 py-3 rounded-2xl bg-amber-500/80 text-white text-lg font-semibold border border-amber-300/30 z-20";
+
+        cameraStateBadge.textContent = "Waiting";
+        cameraStateBadge.className = "px-4 py-2 rounded-full text-lg font-semibold bg-amber-500/20 text-amber-300 border border-amber-300/20";
+
+        cameraFrame.classList.remove("pose-incorrect", "pose-close", "pose-correct");
+        liveFeedbackPanel.classList.remove("feedback-red", "feedback-yellow", "feedback-green");
+        liveInstructionBox.classList.remove("feedback-red", "feedback-yellow", "feedback-green");
+        miniSignal.className = "signal-dot";
+
+        overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
+        freezeLayer.classList.remove("show");
+        freezeFrameImage.src = "";
+        isFrozen = false;
+        setOutlineState("yellow");
+        resetOutlineScale();
+        setCameraBanner(stream ? "Camera ready" : "Camera stopped");
+        setButtonsState();
+    }
+
+    function updateGuidanceHeadline(data) {
+        const pose = String(data.pose || "").toLowerCase();
+        const status = String(data.status || "").toLowerCase();
+        const coachText = String(data.coach_text || "");
+        const feedback = String(data.feedback || "");
+
+        if (coachText) {
+            document.getElementById("guidanceHeadline").textContent = coachText;
+            return;
+        }
+
+        if (pose.includes("low light")) {
+            document.getElementById("guidanceHeadline").textContent = "Improve room lighting.";
+            return;
+        }
+
+        if (pose.includes("unknown")) {
+            document.getElementById("guidanceHeadline").textContent = "Stand clearly in front of the camera.";
+            return;
+        }
+
+        if (pose.includes("body not visible")) {
+            document.getElementById("guidanceHeadline").textContent = "Move back until full body is visible.";
+            return;
+        }
+
+        if (pose.includes("not tree")) {
+            document.getElementById("guidanceHeadline").textContent = "Lift one foot onto the opposite inner leg to enter Tree pose.";
+            return;
+        }
+
+        if (status.includes("perfect")) {
+            document.getElementById("guidanceHeadline").textContent = "Excellent pose. Hold steady.";
+            return;
+        }
+
+        document.getElementById("guidanceHeadline").textContent = feedback || "Adjust posture more to match the guide.";
+    }
+
+    function updateUI(data) {
+        lastPayload = data;
+
+        const score = Number(data.score || 0);
+        const status = data.status || "-";
+        const feedback = data.feedback || "Keep adjusting posture";
+        const pose = data.pose || "-";
+        const coachText = data.coach_text || feedback;
+
+        document.getElementById("poseText").textContent = pose;
+        document.getElementById("statusText").textContent = status;
+        document.getElementById("confidenceText").textContent = formatConfidence(data.confidence);
+        document.getElementById("scoreText").textContent = data.score ?? "-";
+        document.getElementById("qualityText").textContent = (data.quality || "-").replaceAll("_", " ");
+        document.getElementById("holdText").textContent = formatHold(data.hold_time);
+
+        document.getElementById("modelPoseText").textContent = data.model_pose || "-";
+        document.getElementById("liveStatusText").textContent = status;
+        document.getElementById("liveScoreText").textContent = data.score ?? "-";
+        document.getElementById("rightQualityText").textContent = (data.quality || "-").replaceAll("_", " ");
+        document.getElementById("rightHoldText").textContent = formatHold(data.hold_time);
+        document.getElementById("liveInstructionText").textContent = feedback;
+
+        updateGuidanceHeadline(data);
+
+        document.getElementById("leftKneeAngle").textContent = data.angles?.left_knee_angle ?? "-";
+        document.getElementById("rightKneeAngle").textContent = data.angles?.right_knee_angle ?? "-";
+        document.getElementById("leftElbowAngle").textContent = data.angles?.left_elbow_angle ?? "-";
+        document.getElementById("rightElbowAngle").textContent = data.angles?.right_elbow_angle ?? "-";
+        document.getElementById("torsoTilt").textContent = data.angles?.torso_tilt ?? "-";
+
+        const detailsList = document.getElementById("detailsList");
+        detailsList.innerHTML = "";
+
+        if (data.details && data.details.length > 0) {
+            data.details.forEach(detail => {
+                const li = document.createElement("li");
+                li.textContent = detail.replaceAll("_", " ");
+                detailsList.appendChild(li);
+            });
+        } else {
+            const li = document.createElement("li");
+            li.textContent = coachText || "Good posture";
+            detailsList.appendChild(li);
+        }
+
+        updateOutline(status, score, pose);
+        updateCameraGlow(score, status, pose);
+        updateFeedbackBlink(status, score, pose);
+        updateOverlayBadge(data);
+
+        if (!shouldHideOverlay(data) && data.points && data.points.length > 0) {
+            autoScaleOutlineFromPoints(data.points);
+        } else {
+            resetOutlineScale();
+        }
+
+        if (pose.toLowerCase().includes("body not visible")) {
+            setCameraBanner("Move back - full body required");
+        } else if (pose.toLowerCase().includes("low light")) {
+            setCameraBanner("Low light detected");
+        } else if (pose.toLowerCase().includes("unknown")) {
+            setCameraBanner("No clear pose detected");
+        } else if (pose.toLowerCase().includes("not tree")) {
+            setCameraBanner("Not Tree pose");
+        } else {
+            setCameraBanner(`Tracking: ${pose}`);
+        }
+
+        drawOverlay(data);
+        maybeFreezeForPerfectPose(data);
+    }
+
+    async function startCamera() {
+        if (stream || isStarting) return;
+
+        isStarting = true;
+        setButtonsState();
+        setCameraBanner("Starting camera...");
+
+        try {
+            const mediaStream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                    facingMode: "user",
+                    width: { ideal: 720 },
+                    height: { ideal: 1280 }
+                },
+                audio: false
+            });
+
+            stream = mediaStream;
+            video.srcObject = mediaStream;
+
+            video.onloadedmetadata = async () => {
+                await video.play();
+                resizeOverlay();
+                resetOutlineScale();
+                setCameraBanner("Camera live");
+            };
+
+            startPredictionLoop();
+            setButtonsState();
+        } catch (error) {
+            console.error(error);
+            alert("Camera access denied");
+            setCameraBanner("Camera access denied");
+        } finally {
+            isStarting = false;
+            setButtonsState();
+        }
+    }
+
+    function stopCamera() {
+        clearPredictionLoop();
+
+        if (stream) {
+            stream.getTracks().forEach(track => track.stop());
+            stream = null;
+            video.srcObject = null;
+        }
+
+        requestInFlight = false;
+        resetUI();
+    }
+
+    async function captureAndPredict() {
+        if (isFrozen || requestInFlight || !stream) return;
+        if (!video.videoWidth || !video.videoHeight) return;
+
+        requestInFlight = true;
+
+        try {
+            const ctx = captureCanvas.getContext("2d");
+            captureCanvas.width = video.videoWidth;
+            captureCanvas.height = video.videoHeight;
+
+            ctx.drawImage(video, 0, 0, captureCanvas.width, captureCanvas.height);
+
+            const blob = await new Promise(resolve => {
+                captureCanvas.toBlob(resolve, "image/jpeg", 0.95);
+            });
+
+            if (!blob) {
+                requestInFlight = false;
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append("image", blob, "frame.jpg");
+
+            const response = await fetch("{% url 'User:predict_yoga_pose' %}", {
+                method: "POST",
+                body: formData
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                updateUI(data);
+            } else {
+                console.error("Prediction failed:", data.error);
+                setCameraBanner("Prediction failed");
+            }
+        } catch (error) {
+            console.error(error);
+            setCameraBanner("Server connection issue");
+        } finally {
+            requestInFlight = false;
+        }
+    }
+
+    window.addEventListener("resize", resizeOverlay);
+
+    document.addEventListener("visibilitychange", () => {
+        if (document.hidden) {
+            clearPredictionLoop();
+        } else if (stream && !isFrozen) {
+            startPredictionLoop();
+        }
+    });
+
+    resetUI();
+</script>
+</body>
+
+</html>

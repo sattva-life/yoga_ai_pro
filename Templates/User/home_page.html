@@ -1,0 +1,358 @@
+{% extends "Guest/base.html" %}
+{% load static %}
+
+{% block header %}
+<nav
+	class="fixed top-0 left-0 w-full z-50 bg-white/80 backdrop-blur-lg border-b border-white/50 shadow-[0_8px_30px_rgba(17,17,17,0.08)]">
+	<div class="w-full max-w-[1280px] mx-auto flex items-center justify-between px-6 sm:px-10 lg:px-12 py-4">
+		<a href="#" class="flex items-center gap-3 group">
+			<img src="{% static 'sly-logo-spaces.png' %}" alt="SattvaLife Yoga Logo"
+				class="h-11 w-auto object-contain transition-transform duration-300 group-hover:scale-105">
+		</a>
+		<div class="hidden md:flex items-center gap-8 text-sm font-medium text-[#5E585A]">
+			<a href="#poses" class="hover:text-[#D96C7A] transition-colors">Yoga Poses</a>
+			<a href="#practice-plan" class="hover:text-[#D96C7A] transition-colors">Practice Plan</a>
+			<a href="#features" class="hover:text-[#D96C7A] transition-colors">Benefits</a>
+			<a href="#programs" class="hover:text-[#D96C7A] transition-colors">Programs</a>
+			<a href="{% url 'Guest:landing' %}" class="hover:text-[#D96C7A] transition-colors">Logout</a>
+			<a href="https://sattvalife.yoga/" target="_blank"
+				class="inline-flex items-center justify-center rounded-full bg-gradient-to-r from-[#E88490] to-[#D96C7A] px-5 py-2.5 text-white shadow-lg shadow-[#E88490]/25 hover:-translate-y-0.5 transition-all">
+				Visit Official Website
+			</a>
+		</div>
+	</div>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="w-full overflow-hidden relative">
+	<section class="relative w-full min-h-screen flex items-center overflow-hidden">
+		<img src="https://images.unsplash.com/photo-1591228127791-8e2eaef098d3?q=80&w=2200&auto=format&fit=crop"
+			alt="Morning yoga practice" class="absolute inset-0 w-full h-full object-cover">
+
+		<div class="absolute inset-0 bg-black/50"></div>
+		<div class="absolute inset-0 bg-gradient-to-r from-[#111111]/75 via-[#111111]/50 to-[#111111]/20"></div>
+		<div class="absolute inset-0 bg-gradient-to-t from-[#111111]/45 via-transparent to-[#E88490]/12"></div>
+
+		<div class="absolute top-[9%] left-[8%] w-[330px] h-[330px] bg-[#E88490]/22 rounded-full blur-3xl"></div>
+		<div class="absolute bottom-[12%] right-[10%] w-[280px] h-[280px] bg-[#FBECEF]/14 rounded-full blur-3xl"></div>
+
+		<div class="relative z-10 w-full max-w-[1280px] mx-auto px-6 sm:px-8 lg:px-10 pt-36 pb-20">
+			<div class="max-w-3xl">
+				<span
+					class="inline-flex items-center gap-2 bg-white/10 backdrop-blur-md text-white px-4 py-2 rounded-full text-xs font-bold tracking-wider border border-white/15 shadow-lg">
+					YOUR PERSONAL PRACTICE SPACE
+				</span>
+
+				<h1
+					class="mt-6 text-5xl sm:text-6xl lg:text-7xl xl:text-[5.2rem] font-extrabold text-white leading-[0.96] tracking-tight">
+					Welcome to Your<br>
+					Yoga Home<br>
+					<span class="text-[#F6B6C0]">Move, Breathe, Grow</span>
+				</h1>
+
+				<p class="mt-6 text-lg sm:text-xl text-white/85 max-w-2xl font-light leading-relaxed">
+					Explore foundational poses and build a daily rhythm with clear steps, mindful breathing, and gentle
+					progression.
+				</p>
+
+				<div class="flex flex-wrap items-center gap-4 mt-8">
+					<a href="#poses"
+						class="bg-[#E88490] text-white px-8 py-4 rounded-full font-medium shadow-xl shadow-[#E88490]/30 transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl hover:bg-[#D96C7A]">
+						Start Practice
+					</a>
+					<a href="#practice-plan"
+						class="bg-white/10 backdrop-blur-md text-white px-8 py-4 rounded-full font-medium border border-white/20 transition-all duration-300 hover:-translate-y-1 hover:bg-white/20">
+						View Plan
+					</a>
+				</div>
+			</div>
+		</div>
+
+		<div class="absolute bottom-0 left-0 w-full h-32 bg-gradient-to-t from-[#fff8f8] to-transparent"></div>
+	</section>
+
+	<div class="max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8">
+		<section id="poses" class="mt-20 mb-12 text-center">
+			<h2 class="text-[2.2rem] font-bold text-[#181818] mb-4">Core Yoga Poses</h2>
+			<p class="text-lg text-[#6F696B] font-light max-w-2xl mx-auto leading-relaxed">
+				The five poses your client requested, curated for a balanced full-body session.
+			</p>
+			<p class="text-sm text-[#9A8F92] mt-3">Swipe or use arrows to browse all poses.</p>
+		</section>
+
+		<section class="relative mb-20">
+			<button type="button"
+				onclick="document.getElementById('poses-track').scrollBy({ left: -380, behavior: 'smooth' })"
+				class="hidden md:flex absolute left-0 top-1/2 -translate-y-1/2 -translate-x-4 z-10 w-12 h-12 rounded-full bg-white border border-[#F3DADF] items-center justify-center text-[#6F696B] hover:text-[#D96C7A] shadow-md"
+				aria-label="Previous poses">
+				<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+				</svg>
+			</button>
+
+			<div id="poses-track"
+				class="flex gap-6 overflow-x-auto snap-x snap-mandatory pb-2 px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+				<!-- Downward Dog -->
+				<div class="block snap-start shrink-0 w-[86vw] sm:w-[420px]">
+					<article
+						class="bg-white rounded-[2rem] border border-[#F3DADF] overflow-hidden shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-300">
+						<img src="{% static 'Poses/downward-dog.jpg' %}" alt="Downward Dog Pose"
+							class="h-56 w-full object-cover">
+						<div class="p-7">
+							<h3 class="text-2xl font-bold text-[#181818]">Downward Dog Pose</h3>
+							<p class="mt-3 text-[#746E70] font-light leading-relaxed">
+								Lengthens hamstrings, shoulders, and spine while energizing your whole body.
+							</p>
+						</div>
+					</article>
+				</div>
+
+				<!-- Goddess -->
+				<div class="block snap-start shrink-0 w-[86vw] sm:w-[420px]">
+					<article
+						class="bg-[#FFF8F8] rounded-[2rem] border border-[#F3DADF] overflow-hidden shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-300">
+						<img src="{% static 'Poses/goddess.jpg' %}" alt="Goddess Pose" class="h-56 w-full object-cover">
+						<div class="p-7">
+							<h3 class="text-2xl font-bold text-[#181818]">Goddess Pose</h3>
+							<p class="mt-3 text-[#746E70] font-light leading-relaxed">
+								Builds strength through hips and legs while improving grounded stability.
+							</p>
+						</div>
+					</article>
+				</div>
+
+				<!-- Warrior II -->
+				<div class="block snap-start shrink-0 w-[86vw] sm:w-[420px]">
+					<article
+						class="bg-white rounded-[2rem] border border-[#F3DADF] overflow-hidden shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-300">
+						<img src="{% static 'Poses/warrior2.jpg' %}" alt="Warrior II Pose"
+							class="h-56 w-full object-cover">
+						<div class="p-7">
+							<h3 class="text-2xl font-bold text-[#181818]">Warrior II Pose</h3>
+							<p class="mt-3 text-[#746E70] font-light leading-relaxed">
+								Strengthens legs and core, and develops focus with steady breath and gaze.
+							</p>
+						</div>
+					</article>
+				</div>
+
+				<!-- Tree -->
+				<a href="{% url 'User:camera_page' %}" class="block snap-start shrink-0 w-[86vw] sm:w-[420px]">
+					<article
+						class="bg-[#FFF8F8] rounded-[2rem] border border-[#F3DADF] overflow-hidden shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-300">
+						<img src="{% static 'Poses/tree.jpg' %}" alt="Tree Pose" class="h-56 w-full object-cover">
+						<div class="p-7">
+							<h3 class="text-2xl font-bold text-[#181818]">Tree Pose</h3>
+							<p class="mt-3 text-[#746E70] font-light leading-relaxed">
+								Improves balance and concentration while building calm body awareness.
+							</p>
+						</div>
+					</article>
+				</a>
+
+				<!-- Plank -->
+				<div class="block snap-start shrink-0 w-[86vw] sm:w-[420px]">
+					<article
+						class="bg-white rounded-[2rem] border border-[#F3DADF] overflow-hidden shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-300">
+						<img src="{% static 'Poses/plank.jpg' %}" alt="Plank Pose" class="h-56 w-full object-cover">
+						<div class="p-7">
+							<h3 class="text-2xl font-bold text-[#181818]">Plank Pose</h3>
+							<p class="mt-3 text-[#746E70] font-light leading-relaxed">
+								Develops core strength, shoulder endurance, and full-body alignment.
+							</p>
+						</div>
+					</article>
+				</div>
+			</div>
+
+			<button type="button"
+				onclick="document.getElementById('poses-track').scrollBy({ left: 380, behavior: 'smooth' })"
+				class="hidden md:flex absolute right-0 top-1/2 -translate-y-1/2 translate-x-4 z-10 w-12 h-12 rounded-full bg-white border border-[#F3DADF] items-center justify-center text-[#6F696B] hover:text-[#D96C7A] shadow-md"
+				aria-label="Next poses">
+				<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+				</svg>
+			</button>
+		</section>
+		<section id="practice-plan"
+			class="bg-gradient-to-br from-[#FFF4F6] to-[#FFF9FA] rounded-[3rem] p-10 md:p-14 mb-28 border border-[#F3DADF]">
+			<h2 class="text-4xl md:text-5xl font-bold text-[#181818] mb-8 text-center">Suggested Practice Flow</h2>
+			<div class="grid grid-cols-1 md:grid-cols-5 gap-4 text-center">
+				<div class="bg-white rounded-2xl p-5 border border-[#F3DADF]">
+					<p class="font-semibold text-[#181818]">1. Downward Dog</p>
+				</div>
+				<div class="bg-white rounded-2xl p-5 border border-[#F3DADF]">
+					<p class="font-semibold text-[#181818]">2. Goddess</p>
+				</div>
+				<div class="bg-white rounded-2xl p-5 border border-[#F3DADF]">
+					<p class="font-semibold text-[#181818]">3. Warrior II</p>
+				</div>
+				<div class="bg-white rounded-2xl p-5 border border-[#F3DADF]">
+					<p class="font-semibold text-[#181818]">4. Tree</p>
+				</div>
+				<div class="bg-white rounded-2xl p-5 border border-[#F3DADF]">
+					<p class="font-semibold text-[#181818]">5. Plank</p>
+				</div>
+			</div>
+		</section>
+
+		<section id="features" class="mb-28">
+			<div class="text-center mb-14">
+				<h2 class="text-[2.2rem] font-bold text-[#181818] mb-4">Why This Practice Works</h2>
+				<p class="text-lg text-[#6F696B] font-light max-w-2xl mx-auto">Inspired by the landing page flow, this
+					section gives your user homepage richer context and value.</p>
+			</div>
+
+			<div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+				<div
+					class="bg-[#FFF8F8] p-10 rounded-[2rem] border border-[#F3DADF] hover:-translate-y-2 transition-all duration-300">
+					<div
+						class="w-14 h-14 bg-[#FBECEF] text-[#D96C7A] rounded-full flex items-center justify-center mb-6">
+						<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 2v20m8-10H4">
+							</path>
+						</svg>
+					</div>
+					<h3 class="text-xl font-bold text-[#181818] mb-3">Mindfulness</h3>
+					<p class="text-[#746E70] font-light leading-relaxed">Use breath-led movement to calm your mind and
+						create steadiness in daily life.</p>
+				</div>
+
+				<div
+					class="bg-[#FDF1F3] p-10 rounded-[2rem] border border-[#F0D7DC] hover:-translate-y-2 transition-all duration-300">
+					<div
+						class="w-14 h-14 bg-[#F8E1E5] text-[#C96D7A] rounded-full flex items-center justify-center mb-6">
+						<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+								d="M5 12h14M12 5l7 7-7 7"></path>
+						</svg>
+					</div>
+					<h3 class="text-xl font-bold text-[#181818] mb-3">Mobility</h3>
+					<p class="text-[#746E70] font-light leading-relaxed">Increase flexibility and improve posture with
+						simple, repeatable alignment cues.</p>
+				</div>
+
+				<div
+					class="bg-[#FFF8F8] p-10 rounded-[2rem] border border-[#F3DADF] hover:-translate-y-2 transition-all duration-300">
+					<div
+						class="w-14 h-14 bg-[#FBECEF] text-[#D96C7A] rounded-full flex items-center justify-center mb-6">
+						<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+								d="M12 8c-1.657 0-3 1.567-3 3.5S10.343 15 12 15s3-1.567 3-3.5S13.657 8 12 8zm0 0V4m0 11v5m8-8h-4M8 12H4">
+							</path>
+						</svg>
+					</div>
+					<h3 class="text-xl font-bold text-[#181818] mb-3">Strength</h3>
+					<p class="text-[#746E70] font-light leading-relaxed">Build core, leg, and shoulder stability with
+						balanced holds and transitions.</p>
+				</div>
+			</div>
+		</section>
+
+		<section class="mb-28">
+			<div class="text-center mb-14">
+				<h2 class="text-[2.4rem] font-bold text-[#181818] mb-4">
+					How AI Yoga Pose Detection Works
+				</h2>
+				<p class="text-lg text-[#6F696B] font-light max-w-2xl mx-auto">
+					Experience guided yoga practice and receive instant feedback to improve your poses!
+				</p>
+			</div>
+
+			<div class="flex justify-center">
+				<div class="bg-white border border-[#F3DADF] rounded-[2rem] shadow-lg overflow-hidden max-w-6xl w-full">
+
+					<!-- IMAGE -->
+					<img src="{% static 'ai-yoga-process.jpg' %}" alt="AI Yoga Pose Detection Process"
+						class="w-full h-auto object-cover">
+
+				</div>
+			</div>
+		</section>
+
+		<section id="programs" class="mb-28">
+			<div class="text-center mb-12">
+				<h2 class="text-[2.2rem] font-bold text-[#181818] mb-4">Programs for Everyday Life</h2>
+				<p class="text-lg text-[#6F696B] font-light max-w-2xl mx-auto">Use these tracks to guide users by
+					lifestyle and goal, using the same tone as your landing page.</p>
+			</div>
+
+			<div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+				<div
+					class="rounded-[2rem] p-8 bg-white border border-[#F3DADF] shadow-sm hover:shadow-lg transition-all duration-300">
+					<h3 class="text-2xl font-bold text-[#181818] mb-4">Personal Yoga</h3>
+					<p class="text-[#746E70] leading-relaxed font-light mb-5">One-to-one sessions adapted to pace,
+						flexibility, and confidence level.</p>
+					<ul class="space-y-2 text-sm text-[#6C6668]">
+						<li>Flexible schedule support</li>
+						<li>Foundational alignment</li>
+						<li>Progressive pose guidance</li>
+					</ul>
+				</div>
+
+				<div
+					class="rounded-[2rem] p-8 bg-[#FFF8F8] border border-[#F3DADF] shadow-sm hover:shadow-lg transition-all duration-300">
+					<h3 class="text-2xl font-bold text-[#181818] mb-4">Meditation</h3>
+					<p class="text-[#746E70] leading-relaxed font-light mb-5">Breath and stillness sessions to lower
+						stress and improve concentration.</p>
+					<ul class="space-y-2 text-sm text-[#6C6668]">
+						<li>Guided breathing rhythm</li>
+						<li>Calming resets</li>
+						<li>Focus and clarity practice</li>
+					</ul>
+				</div>
+
+				<div
+					class="rounded-[2rem] p-8 bg-white border border-[#F3DADF] shadow-sm hover:shadow-lg transition-all duration-300">
+					<h3 class="text-2xl font-bold text-[#181818] mb-4">Corporate Wellness</h3>
+					<p class="text-[#746E70] leading-relaxed font-light mb-5">Simple sessions that fit team schedules
+						and reduce daily tension at work.</p>
+					<ul class="space-y-2 text-sm text-[#6C6668]">
+						<li>Desk-friendly movement</li>
+						<li>Short recharge breaks</li>
+						<li>Team wellbeing support</li>
+					</ul>
+				</div>
+			</div>
+		</section>
+
+		<section class="mb-28">
+			<div class="text-center mb-12">
+				<h2 class="text-[2.2rem] font-bold text-[#181818] mb-4">What Members Say</h2>
+				<p class="text-lg text-[#6F696B] font-light max-w-2xl mx-auto">Social proof content adapted from landing
+					page style to complete the user journey.</p>
+			</div>
+
+			<div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+				<div class="bg-white border border-[#F3DADF] rounded-[2rem] p-8 shadow-sm">
+					<p class="text-[#6C6668] leading-relaxed font-light">"The pose flow is clear and not overwhelming. I
+						actually stay consistent now."</p>
+					<div class="mt-6">
+						<h4 class="font-semibold text-[#181818]">Member Feedback</h4>
+						<p class="text-sm text-[#9A8F92]">Beginner Track</p>
+					</div>
+				</div>
+
+				<div class="bg-white border border-[#F3DADF] rounded-[2rem] p-8 shadow-sm">
+					<p class="text-[#6C6668] leading-relaxed font-light">"Practicing the five-pose sequence daily
+						improved my posture and focus."</p>
+					<div class="mt-6">
+						<h4 class="font-semibold text-[#181818]">Community Review</h4>
+						<p class="text-sm text-[#9A8F92]">Daily Practice Group</p>
+					</div>
+				</div>
+
+				<div class="bg-white border border-[#F3DADF] rounded-[2rem] p-8 shadow-sm">
+					<p class="text-[#6C6668] leading-relaxed font-light">"The carousel format makes it easy to view one
+						pose at a time on mobile."</p>
+					<div class="mt-6">
+						<h4 class="font-semibold text-[#181818]">Client Note</h4>
+						<p class="text-sm text-[#9A8F92]">Program Owner</p>
+					</div>
+				</div>
+			</div>
+		</section>
+	</div>
+</div>
+{% endblock %}

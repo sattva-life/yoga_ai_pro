@@ -1,0 +1,91 @@
+{% extends "Guest/base.html" %}
+{% load static %}
+
+{% block header %}
+
+{% endblock %}
+
+{% block content %}
+<section class="relative min-h-screen overflow-hidden">
+    <!-- Background image and layered overlays to match landing visual mood -->
+    <img
+        src="https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?q=80&w=2200&auto=format&fit=crop"
+        alt="Yoga background"
+        class="absolute inset-0 w-full h-full object-cover"
+    >
+    <div class="absolute inset-0 bg-black/30"></div>
+    <div class="absolute inset-0 bg-gradient-to-r from-[#111111]/38 via-[#111111]/22 to-[#111111]/12"></div>
+    <div class="absolute inset-0 bg-gradient-to-br from-[#E88490]/20 via-[#FBECEF]/10 to-[#111111]/22"></div>
+
+    <div class="absolute top-[10%] left-[8%] w-[320px] h-[320px] bg-[#E88490]/20 rounded-full blur-3xl"></div>
+    <div class="absolute bottom-[12%] right-[10%] w-[260px] h-[260px] bg-[#F6B6C0]/14 rounded-full blur-3xl"></div>
+
+    <div class="relative z-10 flex-grow flex items-center justify-center px-4 w-full min-h-screen pt-24 pb-28">
+    <div class="w-full max-w-md mt-12">
+        <a href="{% url 'Guest:landing' %}" class="mb-6 flex items-center justify-center group">
+            <img
+                src="{% static 'sly-logo-spaces.png' %}"
+                alt="SattvaLife Yoga Logo"
+                class="h-16 sm:h-20 w-auto object-contain drop-shadow-[0_10px_24px_rgba(0,0,0,0.30)] transition-transform duration-300 group-hover:scale-105"
+            >
+        </a>
+
+    <!-- Center Card -->
+    <div class="bg-white/94 backdrop-blur-xl shadow-[0_20px_50px_-12px_rgba(0,0,0,0.35)] border border-white/70 rounded-[2.5rem] p-10 sm:p-14 w-full animate-fade-in-up transform transition-all duration-700 hover:shadow-[0_25px_60px_-15px_rgba(0,0,0,0.45)]">
+        
+        <div class="text-center mb-10">
+            <h1 class="text-2xl font-bold text-[#181818] mb-2">Welcome Back</h1>
+            <p class="text-[15px] text-[#5F595C] font-normal">Step back into your digital sanctuary.</p>
+        </div>
+
+        <form>
+            <!-- Email Input -->
+            <div class="mb-6">
+                <label class="block text-sm font-medium text-[#4F4A4C] mb-2">Email</label>
+                <div class="relative">
+                    <input type="email" placeholder="name@example.com" class="w-full bg-[#FFF8F8] border border-[#EACFD5] rounded-xl px-4 py-3.5 text-[15px] text-[#232323] placeholder-[#877F82] focus:ring-2 focus:ring-[#E88490]/35 focus:border-[#E8C7CD] focus:bg-white transition-all duration-300 outline-none">
+                </div>
+            </div>
+
+            <!-- Password Input -->
+            <div class="mb-8">
+                <div class="flex justify-between items-center mb-2">
+                    <label class="block text-sm font-medium text-[#4F4A4C]">Password</label>
+                    <a href="#" class="text-sm font-medium text-[#D96C7A] hover:text-[#C45B69] transition-colors">Forgot Password?</a>
+                </div>
+                <div class="relative">
+                    <input type="password" placeholder="Enter your password" class="w-full bg-[#FFF8F8] border border-[#EACFD5] rounded-xl px-4 py-3.5 text-[15px] text-[#232323] placeholder-[#877F82] focus:ring-2 focus:ring-[#E88490]/35 focus:border-[#E8C7CD] focus:bg-white transition-all duration-300 outline-none pr-12">
+                    <button type="button" class="absolute right-4 top-1/2 -translate-y-1/2 text-[#8D8689] hover:text-[#5F595C] focus:outline-none">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+                    </button>
+                    <!-- For the eye strictly icon crossed out -->
+                    <!-- <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"></path></svg> -->
+                </div>
+            </div>
+
+            <!-- Submit Button -->
+            <a href="{% url 'User:home_page' %}" class="w-full bg-gradient-to-r from-[#E88490] to-[#D96C7A] text-white rounded-xl py-3.5 font-medium flex justify-center items-center gap-2 shadow-lg shadow-[#E88490]/25 transition-all duration-300 hover:shadow-xl hover:-translate-y-0.5 hover:from-[#D96C7A] hover:to-[#C45B69]">
+                Log In
+                <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+            </a>
+        </form>
+
+        <div class="mt-10 text-center">
+            <p class="text-[15px] text-[#5F595C] font-normal">New to the practice? <a href="#" class="text-[#D96C7A] font-medium hover:text-[#C45B69] transition-colors">Create an account</a></p>
+        </div>
+    </div>
+</div>
+</div>
+
+<!-- Footer for login is simpler -->
+<footer class="w-full absolute bottom-0 pb-8 pt-4 px-6 sm:px-12 z-10 flex flex-col md:flex-row justify-between items-center text-sm gap-4">
+    <p class="text-white/80 font-light">&copy; 2024 SattvaLife Yoga AI. All rights reserved.</p>
+    <div class="flex gap-6">
+        <a href="https://sattvalife.yoga/" target="_blank" class="text-white/80 hover:text-[#F6C2CA] font-light transition-colors">Visit Official Website</a>
+        <a href="#" class="text-white/80 hover:text-[#F6C2CA] font-light transition-colors">Privacy Policy</a>
+        <a href="#" class="text-white/80 hover:text-[#F6C2CA] font-light transition-colors">Terms of Service</a>
+        <a href="#" class="text-white/80 hover:text-[#F6C2CA] font-light transition-colors">Contact Us</a>
+    </div>
+</footer>
+</section>
+{% endblock %}

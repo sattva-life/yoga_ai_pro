@@ -1,0 +1,181 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SattvaLife Yoga AI</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+    <style>
+    html {
+        scroll-behavior: smooth;
+    }
+
+    body {
+        font-family: 'Poppins', sans-serif;
+        background:
+            radial-gradient(circle at top left, rgba(232,132,144,0.16), transparent 30%),
+            radial-gradient(circle at top right, rgba(251,236,239,0.80), transparent 35%),
+            linear-gradient(180deg, #fff8f8 0%, #fffdfd 100%);
+    }
+
+    .glass {
+        background: rgba(255, 255, 255, 0.72);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+    }
+
+    @keyframes floatY {
+        0%, 100% {
+            transform: translateY(0px);
+        }
+        50% {
+            transform: translateY(-10px);
+        }
+    }
+
+    .float-soft {
+        animation: floatY 5s ease-in-out infinite;
+    }
+
+    @keyframes slowBounce {
+        0%, 100% {
+            transform: translateY(0px);
+        }
+        50% {
+            transform: translateY(-8px);
+        }
+    }
+
+    .animate-slow-bounce {
+        animation: slowBounce 6s ease-in-out infinite;
+    }
+</style>
+</head>
+
+<body class="text-[#1A1A1A] antialiased overflow-x-hidden">
+{% block header %}
+<nav x-data="{ open: false }"
+     class="fixed top-0 left-0 w-full z-50 glass border-b border-white/40 shadow-[0_10px_40px_rgba(17,17,17,0.08)] transition-all duration-500">
+
+    <div class="w-full flex items-center justify-between px-6 sm:px-10 lg:px-14 py-4">
+
+        <!-- Logo -->
+        <a href="#"
+           class="flex items-center gap-3 group transition-all duration-300 hover:scale-[1.02]">
+            <img
+                src="{% static 'sly-logo-spaces.png' %}"
+                alt="SattvaLife Yoga Logo"
+                class="h-11 w-auto object-contain transition-all duration-500 group-hover:scale-105 group-hover:rotate-[1deg]"
+            >
+        </a>
+
+        <!-- Desktop Menu -->
+        <div class="hidden md:flex items-center gap-8 text-sm font-medium">
+
+            <a href="#features"
+               class="relative text-[#444] transition-all duration-300 hover:text-[#D96C7A] after:absolute after:left-0 after:-bottom-1 after:h-[2px] after:w-0 after:bg-[#D96C7A] after:transition-all after:duration-300 hover:after:w-full">
+                Features
+            </a>
+
+            <a href="#programs"
+               class="relative text-[#444] transition-all duration-300 hover:text-[#D96C7A] after:absolute after:left-0 after:-bottom-1 after:h-[2px] after:w-0 after:bg-[#D96C7A] after:transition-all after:duration-300 hover:after:w-full">
+                Programs
+            </a>
+
+            <a href="#about"
+               class="relative text-[#444] transition-all duration-300 hover:text-[#D96C7A] after:absolute after:left-0 after:-bottom-1 after:h-[2px] after:w-0 after:bg-[#D96C7A] after:transition-all after:duration-300 hover:after:w-full">
+                About
+            </a>
+
+            <a href="{% url 'Guest:login' %}"
+               class="relative text-[#444] transition-all duration-300 hover:text-[#D96C7A] after:absolute after:left-0 after:-bottom-1 after:h-[2px] after:w-0 after:bg-[#D96C7A] after:transition-all after:duration-300 hover:after:w-full">
+                Login
+            </a>
+
+            <a href="#"
+               class="inline-flex items-center justify-center rounded-full bg-white border border-[#E8C7CD] px-5 py-2.5 text-[#D96C7A] transition-all duration-300 hover:bg-[#FDF1F3] hover:-translate-y-0.5 hover:shadow-md active:scale-95">
+                Sign Up
+            </a>
+
+            <a href="https://sattvalife.yoga/" target="_blank"
+               class="inline-flex items-center justify-center rounded-full bg-gradient-to-r from-[#E88490] to-[#D96C7A] px-5 py-2.5 text-white shadow-lg shadow-[#E88490]/20 transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.02] hover:shadow-xl hover:shadow-[#E88490]/30 active:scale-95">
+                Visit Official Website
+            </a>
+        </div>
+
+        <!-- Mobile Button -->
+        <button @click="open = !open"
+                class="md:hidden text-[#333] transition-all duration-300 hover:text-[#D96C7A] hover:scale-110 active:scale-95">
+            <svg class="w-7 h-7 transition-transform duration-300" :class="open ? 'rotate-90' : 'rotate-0'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M4 6h16M4 12h16M4 18h16"/>
+            </svg>
+        </button>
+
+    </div>
+
+    <!-- Mobile Menu -->
+    <div x-show="open"
+         x-transition:enter="transition ease-out duration-300"
+         x-transition:enter-start="opacity-0 -translate-y-3"
+         x-transition:enter-end="opacity-100 translate-y-0"
+         x-transition:leave="transition ease-in duration-200"
+         x-transition:leave-start="opacity-100 translate-y-0"
+         x-transition:leave-end="opacity-0 -translate-y-2"
+         class="md:hidden px-6 pb-4">
+
+        <div class="flex flex-col gap-3 text-sm font-medium pt-2">
+            <a href="#features"
+               class="text-[#444] transition-all duration-300 hover:text-[#D96C7A] hover:translate-x-1">
+                Features
+            </a>
+
+            <a href="#programs"
+               class="text-[#444] transition-all duration-300 hover:text-[#D96C7A] hover:translate-x-1">
+                Programs
+            </a>
+
+            <a href="#about"
+               class="text-[#444] transition-all duration-300 hover:text-[#D96C7A] hover:translate-x-1">
+                About
+            </a>
+
+            <a href="{% url 'Guest:login' %}"
+               class="text-[#444] transition-all duration-300 hover:text-[#D96C7A] hover:translate-x-1">
+                Login
+            </a>
+
+            <a href="#"
+               class="rounded-full border border-[#E8C7CD] px-5 py-2.5 text-[#D96C7A] text-center transition-all duration-300 hover:bg-[#FDF1F3] hover:-translate-y-0.5 active:scale-95">
+                Sign Up
+            </a>
+
+            <a href="https://sattvalife.yoga/" target="_blank"
+               class="rounded-full bg-gradient-to-r from-[#E88490] to-[#D96C7A] px-5 py-2.5 text-white text-center shadow-lg shadow-[#E88490]/20 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl active:scale-95">
+                Visit Official Website
+            </a>
+        </div>
+    </div>
+
+</nav>
+{% endblock %}
+
+    <main class="min-h-screen">
+        {% block content %}{% endblock %}
+    </main>
+
+</body>
+
+</html>
