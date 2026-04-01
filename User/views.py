@@ -486,6 +486,7 @@ def create_empty_analysis(msg):
 # =========================================================
 def analyze_tree_pose(raw_pts):
     ls, rs = raw_pts[LEFT_SHOULDER], raw_pts[RIGHT_SHOULDER]
+    le, re = raw_pts[LEFT_ELBOW], raw_pts[RIGHT_ELBOW]
     lw, rw = raw_pts[LEFT_WRIST], raw_pts[RIGHT_WRIST]
     lh, rh = raw_pts[LEFT_HIP], raw_pts[RIGHT_HIP]
     lk, rk = raw_pts[LEFT_KNEE], raw_pts[RIGHT_KNEE]
@@ -495,8 +496,14 @@ def analyze_tree_pose(raw_pts):
     hip_center = (lh + rh) / 2.0
     torso_size = float(np.linalg.norm(shoulder_center[:2] - hip_center[:2])) + 1e-6
 
+    # -----------------------------------------------------
+    # MAIN JOINT ANGLES
+    # -----------------------------------------------------
     left_knee_angle = calculate_angle(lh[:2], lk[:2], la[:2])
     right_knee_angle = calculate_angle(rh[:2], rk[:2], ra[:2])
+
+    left_elbow_angle = calculate_angle(ls[:2], le[:2], lw[:2])
+    right_elbow_angle = calculate_angle(rs[:2], re[:2], rw[:2])
 
     is_neutral_standing = left_knee_angle > 158 and right_knee_angle > 158
 
@@ -557,7 +564,7 @@ def analyze_tree_pose(raw_pts):
     )
 
     foot_place_ok = (
-        (one_foot_lifted and not_on_knee_joint and foot_height_ok) or
+        (one_foot_lifted and not_on_knee_joint and foot_height_ok and foot_close_to_leg) or
         inferred_valid_leg_position
     )
 
@@ -569,31 +576,47 @@ def analyze_tree_pose(raw_pts):
     torso_ok = torso_tilt <= 14.0
 
     # -----------------------------------------------------
-    # HANDS
+    # HANDS / ARMS
     # -----------------------------------------------------
     wrist_distance = float(np.linalg.norm(lw[:2] - rw[:2])) / torso_size
     wrist_height_diff = abs(float(lw[1] - rw[1])) / torso_size
 
-    # prayer near chest / face zone
+    left_wrist_above_left_shoulder = lw[1] < ls[1] - 0.10
+    right_wrist_above_right_shoulder = rw[1] < rs[1] - 0.10
+
+    elbows_straight = left_elbow_angle > 150 and right_elbow_angle > 150
+    elbows_soft_ok = left_elbow_angle > 138 and right_elbow_angle > 138
+
+    hands_symmetric = wrist_height_diff < 0.10
+    hands_not_too_wide = wrist_distance < 0.35
+    hands_close_for_prayer = wrist_distance < 0.12
+
+    left_wrist_near_midline = abs(float(lw[0] - shoulder_center[0])) / torso_size < 0.22
+    right_wrist_near_midline = abs(float(rw[0] - shoulder_center[0])) / torso_size < 0.22
+
     prayer_hands = (
-        wrist_distance < 0.20 and
-        wrist_height_diff < 0.16 and
+        hands_close_for_prayer and
+        wrist_height_diff < 0.08 and
         lw[1] < hip_center[1] and
-        rw[1] < hip_center[1]
+        rw[1] < hip_center[1] and
+        lw[1] > shoulder_center[1] - 0.18 and
+        rw[1] > shoulder_center[1] - 0.18 and
+        left_wrist_near_midline and
+        right_wrist_near_midline
     )
 
-    # overhead hands, both clearly above shoulders
     hands_up = (
-        lw[1] < ls[1] - 0.02 and
-        rw[1] < rs[1] - 0.02 and
-        wrist_height_diff < 0.22
+        left_wrist_above_left_shoulder and
+        right_wrist_above_right_shoulder and
+        hands_symmetric and
+        hands_not_too_wide and
+        elbows_straight
     )
 
     hands_ready = prayer_hands or hands_up
 
     # -----------------------------------------------------
     # FINAL STRICT TREE GATE
-    # HANDS ARE REQUIRED
     # -----------------------------------------------------
     strict_tree_gate = (
         not is_neutral_standing and
@@ -658,11 +681,18 @@ def analyze_tree_pose(raw_pts):
         tips = ["Keep shoulders over hips.", "Look straight ahead."]
 
     elif not hands_ready:
-        score = 80
+        score = 75
         status = "warning"
         pose_label = "Tree Pose"
-        main_f = "Step 6: Bring your hands to prayer or raise them overhead."
-        tips = ["Your leg position is correct.", "Now complete the pose with proper hand position."]
+        main_f = "Step 6: Bring your hands to prayer or raise them overhead correctly."
+        tips = ["Your leg position is good.", "Now correct the hand and arm position."]
+
+    elif hands_up and not elbows_straight:
+        score = 78
+        status = "warning"
+        pose_label = "Tree Pose"
+        main_f = "Straighten both elbows more when raising your hands overhead."
+        tips = ["Reach upward through both arms.", "Keep both elbows long and balanced."]
 
     else:
         score = 100
@@ -682,6 +712,10 @@ def analyze_tree_pose(raw_pts):
         "hands_ready": hands_ready,
         "prayer_hands": prayer_hands,
         "hands_up": hands_up,
+        "elbows_straight": elbows_straight,
+        "elbows_soft_ok": elbows_soft_ok,
+        "hands_symmetric": hands_symmetric,
+        "hands_not_too_wide": hands_not_too_wide,
         "torso": torso_ok,
         "one_foot_lifted": one_foot_lifted,
         "inferred_valid_leg_position": inferred_valid_leg_position,
@@ -702,6 +736,8 @@ def analyze_tree_pose(raw_pts):
         "angles": {
             "left_knee_angle": round(float(left_knee_angle), 1),
             "right_knee_angle": round(float(right_knee_angle), 1),
+            "left_elbow_angle": round(float(left_elbow_angle), 1),
+            "right_elbow_angle": round(float(right_elbow_angle), 1),
             "torso_tilt": round(float(torso_tilt), 1),
         },
         "checks": checks,
@@ -711,22 +747,20 @@ def is_tree_like(model_label, model_confidence, analysis):
     label = str(model_label).lower()
     checks = analysis["checks"]
 
-    # Hard reject unless the body mechanics really match tree
     if not checks.get("strict_tree_gate", False):
         return False
 
-    # Accept only with stronger model support
     if "tree" in label and model_confidence >= 0.72:
         return True
 
-    # Rule-based fallback only if all strong geometry checks pass
     if (
         checks.get("standing_leg") and
         checks.get("foot_place") and
         checks.get("no_knee_pressure") and
         checks.get("knee_open") and
         checks.get("torso") and
-        checks.get("balance") and
+        checks.get("hands_ready") and
+        checks.get("elbows_straight") and
         checks.get("one_foot_lifted")
     ):
         return True
@@ -832,18 +866,28 @@ def hold_bonus(hold_time):
 def choose_quality_label(analysis, defect_label, defect_confidence):
     checks = analysis["checks"]
 
-    if analysis["score"] >= 90 and checks.get("torso") and checks.get("strict_tree_gate"):
+    if (
+        analysis["score"] >= 90 and
+        checks.get("torso") and
+        checks.get("strict_tree_gate") and
+        checks.get("hands_ready") and
+        checks.get("elbows_straight")
+    ):
         return "Perfect_Tree"
 
     if defect_confidence >= 0.65 and defect_label != "N/A":
         return defect_label
 
-    if not checks.get("standing_leg"): return "Bent_Support_Leg"
-    if not checks.get("hands_up"): return "Low_Hands"
-    if not checks.get("torso"): return "Torso_Lean"
+    if not checks.get("standing_leg"):
+        return "Bent_Support_Leg"
+
+    if not checks.get("hands_ready") or not checks.get("elbows_straight"):
+        return "Low_Hands"
+
+    if not checks.get("torso"):
+        return "Torso_Lean"
 
     return "Perfect_Tree"
-
 
 # =========================================================
 # FRONTEND OVERLAY HELPERS (VISIBILITY FIX)
@@ -899,6 +943,8 @@ def build_angle_texts(raw_pts, landmarks, analysis):
     mapping = [
         (LEFT_KNEE, analysis.get("angles", {}).get("left_knee_angle", 0)),
         (RIGHT_KNEE, analysis.get("angles", {}).get("right_knee_angle", 0)),
+        (LEFT_ELBOW, analysis.get("angles", {}).get("left_elbow_angle", 0)),
+        (RIGHT_ELBOW, analysis.get("angles", {}).get("right_elbow_angle", 0)),
     ]
 
     for idx, value in mapping:
