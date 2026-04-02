@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Down Dog Live Coach</title>
+    <link rel="icon" href="data:,">
     <script src="https://cdn.tailwindcss.com"></script>
 
     <style>
@@ -430,15 +431,18 @@ let animationId = null;
 let isFrozen = false;
 let isStarting = false;
 let lastPayload = null;
+let lastGoodPayload = null;
 let perfectHoldFrames = 0;
+let lostFrameCount = 0;
 
 const captureCanvas = document.createElement("canvas");
 
 const FREEZE_THRESHOLD_FRAMES = 3;
-const PREDICT_EVERY_MS = 260;
+const PREDICT_EVERY_MS = 360;
 const JPEG_QUALITY = 0.78;
 const MIRROR_PREVIEW = true;
 const DISPLAY_POINT_STATE = new Map();
+const MAX_LOST_FRAMES = 6;
 
 function getCookie(name) {
     let cookieValue = null;
@@ -682,6 +686,7 @@ function resumeCamera() {
     cameraFrame.classList.remove("perfect-ring");
     isFrozen = false;
     perfectHoldFrames = 0;
+    lostFrameCount = 0;
     resetDisplayPointState();
 
     if (stream) {
@@ -696,8 +701,10 @@ function resumeCamera() {
 
 function resetUI() {
     lastPayload = null;
+    lastGoodPayload = null;
     isFrozen = false;
     perfectHoldFrames = 0;
+    lostFrameCount = 0;
 
     freezeLayer.classList.remove("show");
     freezeFrameImage.src = "";
@@ -753,6 +760,20 @@ function updateUI(data) {
     const bestHoldTime = Number(data.best_hold_time || 0);
     const isPerfect = Boolean(data.perfect_hold) || (score >= 96 && String(status).toLowerCase().includes("perfect"));
 
+    const hasUsablePoints = Array.isArray(data.points) && data.points.length > 0;
+    const isBadFrame =
+        pose === "Unknown" ||
+        pose === "Body Not Visible" ||
+        pose === "Low Light" ||
+        !hasUsablePoints;
+
+    if (!isBadFrame) {
+        lastGoodPayload = data;
+        lostFrameCount = 0;
+    } else {
+        lostFrameCount += 1;
+    }
+
     document.getElementById("poseText").textContent = pose;
     document.getElementById("statusText").textContent = status;
     document.getElementById("confidenceText").textContent = `${((data.confidence || 0) * 100).toFixed(1)}%`;
@@ -784,7 +805,14 @@ function updateUI(data) {
     setStatusClass(document.getElementById("liveStatusText"), status);
 
     updateOverlayBadge(pose, score, status);
-    drawOverlay(data);
+
+    if (!isBadFrame) {
+        drawOverlay(data);
+    } else if (lastGoodPayload && lostFrameCount <= MAX_LOST_FRAMES) {
+        drawOverlay(lastGoodPayload);
+    } else {
+        clearOverlay();
+    }
 
     if (isPerfect) perfectHoldFrames++;
     else perfectHoldFrames = 0;
@@ -877,8 +905,12 @@ function startRenderLoop() {
     if (animationId) cancelAnimationFrame(animationId);
 
     const render = () => {
-        if (!isFrozen && lastPayload) {
-            drawOverlay(lastPayload);
+        if (!isFrozen) {
+            if (lastPayload && Array.isArray(lastPayload.points) && lastPayload.points.length > 0) {
+                drawOverlay(lastPayload);
+            } else if (lastGoodPayload && lostFrameCount <= MAX_LOST_FRAMES) {
+                drawOverlay(lastGoodPayload);
+            }
         }
         animationId = requestAnimationFrame(render);
     };

@@ -2,6 +2,7 @@ from pathlib import Path
 from collections import deque, Counter
 import time
 import pickle
+import warnings
 
 import cv2
 import mediapipe as mp
@@ -24,6 +25,9 @@ DD_HIP_CENTER_HISTORY = deque(maxlen=20)
 DD_SHOULDER_CENTER_HISTORY = deque(maxlen=20)
 DD_HIP_HEIGHT_HISTORY = deque(maxlen=20)
 DD_SPINE_LINE_HISTORY = deque(maxlen=20)
+
+DD_VISIBILITY_HISTORY = deque(maxlen=8)
+DD_DETECTION_HISTORY = deque(maxlen=8)
 
 DD_HOLD_START = None
 DD_BEST_HOLD_TIME = 0.0
@@ -253,6 +257,12 @@ def dd_smooth_feedback(new_feedback):
     return Counter(DD_FEEDBACK_HISTORY).most_common(1)[0][0]
 
 
+def dd_smooth_boolean(history, value):
+    history.append(bool(value))
+    true_count = sum(history)
+    return true_count >= max(1, len(history) // 2 + 1)
+
+
 # =========================================================
 # BASIC HELPERS
 # =========================================================
@@ -377,45 +387,33 @@ def dd_build_feature_dataframe_from_landmarks(landmarks):
     features_df = pd.DataFrame([row], columns=DD_MODEL_COLUMNS)
     return features_df, lm_dict, angles
 
+
 def dd_predict_model_label(features_df):
-    import warnings
-
-    # always start from a float DataFrame
     features_df = features_df.astype(np.float32).copy()
-
-    # scaler/model may have been trained with named columns
     expected_names = getattr(downdog_scaler, "feature_names_in_", None)
     expected_count = getattr(downdog_scaler, "n_features_in_", features_df.shape[1])
 
     X_for_scaler = None
 
-    # -----------------------------------------------------
-    # CASE 1: scaler has feature names and they match runtime columns
-    # -----------------------------------------------------
     if expected_names is not None:
-        expected_names = [str(x) for x in expected_names]
-        current_names = [str(x) for x in features_df.columns]
+        expected_names_list = list(expected_names)
+        expected_names_str = [str(x) for x in expected_names_list]
+        current_names_str = [str(x) for x in features_df.columns]
 
-        # direct name match
-        if set(expected_names).issubset(set(current_names)):
-            X_for_scaler = features_df[expected_names]
+        if set(expected_names_str).issubset(set(current_names_str)):
+            rename_map = {str(col): col for col in features_df.columns}
+            X_for_scaler = features_df[[rename_map[name] for name in expected_names_str]]
 
-        # numeric-name match like 0,1,2,... stored as strings
-        elif len(expected_names) == features_df.shape[1] and expected_names == [str(i) for i in range(features_df.shape[1])]:
+        elif expected_names_str == [str(i) for i in range(features_df.shape[1])]:
             temp_df = features_df.copy()
             temp_df.columns = [str(i) for i in range(temp_df.shape[1])]
-            X_for_scaler = temp_df[expected_names]
+            X_for_scaler = temp_df[expected_names_str]
 
-        # numeric-name match like 0,1,2,... stored as ints
-        elif len(expected_names) == features_df.shape[1] and expected_names == list(range(features_df.shape[1])):
+        elif expected_names_list == list(range(features_df.shape[1])):
             temp_df = features_df.copy()
             temp_df.columns = list(range(temp_df.shape[1]))
-            X_for_scaler = temp_df[expected_names]
+            X_for_scaler = temp_df[expected_names_list]
 
-    # -----------------------------------------------------
-    # CASE 2: fallback to numpy if names do not match
-    # this avoids feature-name mismatch crashes
-    # -----------------------------------------------------
     if X_for_scaler is None:
         X_array = features_df.to_numpy(dtype=np.float32)
 
@@ -445,6 +443,7 @@ def dd_predict_model_label(features_df):
 
     return str(prediction), confidence
 
+
 # =========================================================
 # VISIBILITY / FRAMING
 # =========================================================
@@ -470,7 +469,6 @@ def dd_check_body_visibility(lm_dict):
         lm_dict["left_hip"]["visibility"] > 0.35 and
         lm_dict["right_hip"]["visibility"] > 0.35
     )
-
     wrists_ok = (
         lm_dict["left_wrist"]["visibility"] > 0.18 or
         lm_dict["right_wrist"]["visibility"] > 0.18
@@ -940,7 +938,10 @@ def process_down_dog_request(request):
             )
 
         landmarks = dd_detect_landmarks(frame)
-        if not landmarks:
+        has_landmarks = landmarks is not None
+        stable_has_landmarks = dd_smooth_boolean(DD_DETECTION_HISTORY, has_landmarks)
+
+        if not has_landmarks and not stable_has_landmarks:
             DD_POSE_HISTORY.clear()
             DD_SCORE_HISTORY.clear()
             DD_FEEDBACK_HISTORY.clear()
@@ -968,13 +969,33 @@ def process_down_dog_request(request):
                 angle_texts=[],
             )
 
+        if landmarks is None:
+            return dd_api_success(
+                pose="Tracking...",
+                model_pose="Unknown",
+                quality="N/A",
+                feedback="Hold still while detection stabilizes.",
+                coach_text="Keep the pose steady.",
+                status="warning",
+                confidence=0.0,
+                score=0,
+                hold_time=0.0,
+                best_hold_time=round(float(DD_BEST_HOLD_TIME), 1),
+                angles={},
+                details=["Hold still", "Keep full body in frame"],
+                perfect_hold=False,
+                points=[],
+                angle_texts=[],
+            )
+
         features_df, lm_dict, _ = dd_build_feature_dataframe_from_landmarks(landmarks)
         raw_pts = np.array([[lm.x, lm.y, lm.z] for lm in landmarks], dtype=np.float32)
 
         full_body_visible, visible_count, avg_visibility = dd_check_body_visibility(lm_dict)
+        stable_full_body_visible = dd_smooth_boolean(DD_VISIBILITY_HISTORY, full_body_visible)
         framing_feedback = dd_check_frame_position(raw_pts)
 
-        if not full_body_visible:
+        if not full_body_visible and not stable_full_body_visible:
             DD_POSE_HISTORY.clear()
             DD_SCORE_HISTORY.clear()
             DD_FEEDBACK_HISTORY.clear()
@@ -1052,7 +1073,7 @@ def process_down_dog_request(request):
 
         hold_time, best_hold = dd_update_hold_state(
             is_downdog=is_downdog,
-            full_body_visible=full_body_visible,
+            full_body_visible=stable_full_body_visible,
             low_light=low_light,
         )
 
