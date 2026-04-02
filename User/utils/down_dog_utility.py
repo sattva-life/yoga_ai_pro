@@ -379,7 +379,10 @@ def dd_build_feature_dataframe_from_landmarks(landmarks):
 
 
 def dd_predict_model_label(features_df):
-    features_df = features_df.astype(np.float32)
+    # keep same order, only rename columns to numeric string/int style
+    features_df = features_df.astype(np.float32).copy()
+    features_df.columns = list(range(features_df.shape[1]))
+
     scaled_features = downdog_scaler.transform(features_df)
 
     prediction = downdog_model.predict(scaled_features)[0]
