@@ -1,0 +1,735 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Down Dog Live Coach</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        html, body {
+            margin: 0;
+            height: 100%;
+            background: #020617;
+        }
+
+        body {
+            color: white;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }
+
+        .glass {
+            background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.05));
+            backdrop-filter: blur(14px);
+            border: 1px solid rgba(255,255,255,0.08);
+            box-shadow: 0 18px 45px rgba(0,0,0,0.28);
+        }
+
+        .panel-title {
+            font-size: 1.55rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+        }
+
+        .metric-card {
+            background: rgba(15, 23, 42, 0.55);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 1.25rem;
+            padding: 1rem;
+        }
+
+        .metric-label {
+            font-size: 0.8rem;
+            color: #94a3b8;
+            margin-bottom: 0.35rem;
+        }
+
+        .metric-value {
+            font-size: 1.45rem;
+            font-weight: 800;
+            line-height: 1.1;
+        }
+
+        .camera-shell {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 16 / 9;
+            max-height: 72vh;
+            min-height: 420px;
+            border-radius: 1.75rem;
+            overflow: hidden;
+            background: black;
+            border: 1px solid rgba(255,255,255,0.08);
+            box-shadow: 0 25px 60px rgba(0,0,0,0.35);
+        }
+
+        .camera-video,
+        .camera-overlay,
+        .guide-image {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .camera-video {
+            object-fit: cover;
+            transform: scaleX(-1);
+            transform-origin: center;
+            z-index: 1;
+            background: black;
+        }
+
+        .guide-image {
+            object-fit: contain;
+            z-index: 2;
+            pointer-events: none;
+            opacity: 0.18;
+            mix-blend-mode: screen;
+            filter: brightness(1.08);
+        }
+
+        .camera-overlay {
+            z-index: 3;
+            pointer-events: none;
+        }
+
+        .overlay-badge {
+            position: absolute;
+            top: 16px;
+            left: 16px;
+            z-index: 4;
+            border-radius: 999px;
+            padding: 0.8rem 1rem;
+            font-weight: 700;
+            font-size: 0.96rem;
+            border: 1px solid rgba(255,255,255,0.14);
+            background: rgba(15, 23, 42, 0.75);
+            backdrop-filter: blur(8px);
+        }
+
+        .camera-status {
+            position: absolute;
+            bottom: 16px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 4;
+            padding: 0.7rem 1rem;
+            border-radius: 999px;
+            background: rgba(15, 23, 42, 0.72);
+            border: 1px solid rgba(255,255,255,0.10);
+            font-weight: 600;
+            color: #e2e8f0;
+            backdrop-filter: blur(8px);
+        }
+
+        .control-btn {
+            border: 0;
+            border-radius: 1rem;
+            padding: 0.9rem 1.1rem;
+            font-weight: 800;
+            cursor: pointer;
+            transition: 0.2s ease;
+            color: white;
+        }
+
+        .control-btn:hover {
+            transform: translateY(-1px);
+        }
+
+        .btn-start { background: #16a34a; }
+        .btn-stop { background: #dc2626; }
+        .btn-guide { background: #0891b2; }
+
+        .feedback-main {
+            font-size: clamp(1.7rem, 2.2vw, 2.8rem);
+            font-weight: 900;
+            line-height: 1.08;
+            letter-spacing: -0.03em;
+        }
+
+        .feedback-sub {
+            font-size: clamp(1.1rem, 1.4vw, 1.45rem);
+            font-weight: 700;
+            line-height: 1.3;
+        }
+
+        .tips-list {
+            margin: 0;
+            padding-left: 1.2rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            color: #e2e8f0;
+            font-size: 1rem;
+            line-height: 1.5;
+        }
+
+        .tips-list li::marker {
+            color: #34d399;
+        }
+
+        .guide-panel {
+            position: fixed;
+            inset: 0 0 0 auto;
+            width: min(420px, 92vw);
+            height: 100vh;
+            z-index: 40;
+            transform: translateX(100%);
+            transition: transform 0.28s ease;
+            background: linear-gradient(180deg, rgba(15,23,42,0.98), rgba(6,78,59,0.96));
+            border-left: 1px solid rgba(255,255,255,0.10);
+            box-shadow: -10px 0 30px rgba(0,0,0,0.35);
+            backdrop-filter: blur(14px);
+        }
+
+        .guide-panel.open {
+            transform: translateX(0);
+        }
+
+        .guide-backdrop {
+            position: fixed;
+            inset: 0;
+            z-index: 30;
+            background: rgba(0,0,0,0.45);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.22s ease;
+        }
+
+        .guide-backdrop.show {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .status-good {
+            color: #4ade80;
+        }
+
+        .status-warn {
+            color: #facc15;
+        }
+
+        .status-bad {
+            color: #fb7185;
+        }
+
+        .status-neutral {
+            color: #cbd5e1;
+        }
+
+        @media (max-width: 1200px) {
+            body {
+                overflow: auto;
+            }
+
+            .page-grid {
+                grid-template-columns: 1fr !important;
+                height: auto !important;
+            }
+
+            .camera-shell {
+                min-height: 280px;
+                max-height: none;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950">
+
+    <button id="openGuideBtn"
+        class="fixed top-5 right-5 z-50 control-btn btn-guide">
+        Guide
+    </button>
+
+    <div id="guideBackdrop" class="guide-backdrop"></div>
+
+    <aside id="guidePanel" class="guide-panel p-6 flex flex-col">
+        <div class="flex items-start justify-between gap-4 mb-5">
+            <div>
+                <h2 class="text-3xl font-extrabold text-emerald-300">Downward Dog</h2>
+                <p class="mt-2 text-slate-300 leading-relaxed">
+                    Build a strong inverted V shape. Keep your arms long, lift your hips, and lengthen your legs.
+                </p>
+            </div>
+            <button id="closeGuideBtn"
+                class="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/10">
+                ✕
+            </button>
+        </div>
+
+        <div class="rounded-3xl overflow-hidden border border-white/10">
+            <img src="{% static 'Poses/DownDogEg.jpg' %}" alt="Down Dog Example"
+                class="w-full h-[230px] object-cover">
+        </div>
+
+        <div class="mt-6 space-y-4 text-slate-200 text-lg overflow-auto pr-2">
+            <div class="flex gap-4 items-start">
+                <span class="w-10 h-10 rounded-full bg-emerald-500 flex items-center justify-center font-bold shrink-0">1</span>
+                <p>Place both hands on the floor and spread your fingers.</p>
+            </div>
+            <div class="flex gap-4 items-start">
+                <span class="w-10 h-10 rounded-full bg-emerald-500 flex items-center justify-center font-bold shrink-0">2</span>
+                <p>Step your feet back and lift your hips high.</p>
+            </div>
+            <div class="flex gap-4 items-start">
+                <span class="w-10 h-10 rounded-full bg-emerald-500 flex items-center justify-center font-bold shrink-0">3</span>
+                <p>Straighten your arms and lengthen your spine.</p>
+            </div>
+            <div class="flex gap-4 items-start">
+                <span class="w-10 h-10 rounded-full bg-emerald-500 flex items-center justify-center font-bold shrink-0">4</span>
+                <p>Keep your legs active and relax your head between your arms.</p>
+            </div>
+        </div>
+    </aside>
+
+    <main class="max-w-[1800px] mx-auto p-5 h-screen">
+        <section class="page-grid grid grid-cols-[330px_minmax(700px,1.3fr)_380px] gap-5 h-full">
+
+            <aside class="glass rounded-[2rem] p-5 flex flex-col gap-4">
+                <div>
+                    <h2 class="panel-title text-emerald-300">Live Result</h2>
+                    <p class="text-slate-400 mt-1">Real-time pose score and angle summary.</p>
+                </div>
+
+                <div class="metric-card">
+                    <div class="metric-label">Pose</div>
+                    <div id="poseText" class="metric-value">-</div>
+                </div>
+
+                <div class="metric-card">
+                    <div class="metric-label">Status</div>
+                    <div id="statusText" class="metric-value status-neutral">-</div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="metric-card">
+                        <div class="metric-label">Confidence</div>
+                        <div id="confidenceText" class="metric-value">-</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Score</div>
+                        <div id="scoreText" class="metric-value">-</div>
+                    </div>
+                </div>
+
+                <div class="metric-card">
+                    <div class="metric-label">Model Output</div>
+                    <div id="modelPoseText" class="metric-value">-</div>
+                </div>
+
+                <div class="metric-card">
+                    <div class="metric-label">Quality</div>
+                    <div id="qualityText" class="metric-value">-</div>
+                </div>
+
+                <div class="metric-card">
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="metric-label mb-0">Joint Angles</div>
+                    </div>
+
+                    <div class="space-y-3 text-[1rem]">
+                        <div class="flex justify-between"><span class="text-slate-300">Left Elbow</span><span id="leftElbowAngle" class="font-bold">-</span></div>
+                        <div class="flex justify-between"><span class="text-slate-300">Right Elbow</span><span id="rightElbowAngle" class="font-bold">-</span></div>
+                        <div class="flex justify-between"><span class="text-slate-300">Left Knee</span><span id="leftKneeAngle" class="font-bold">-</span></div>
+                        <div class="flex justify-between"><span class="text-slate-300">Right Knee</span><span id="rightKneeAngle" class="font-bold">-</span></div>
+                    </div>
+                </div>
+            </aside>
+
+            <section class="glass rounded-[2rem] p-5 flex flex-col gap-4">
+                <div class="flex items-center justify-between gap-4 flex-wrap">
+                    <div>
+                        <h2 class="panel-title">Down Dog Camera</h2>
+                        <p class="text-slate-400 mt-1">Landscape view for full-body alignment.</p>
+                    </div>
+
+                    <div class="flex gap-3">
+                        <button id="startBtn" class="control-btn btn-start">Start Camera</button>
+                        <button id="stopBtn" class="control-btn btn-stop">Stop Camera</button>
+                    </div>
+                </div>
+
+                <div class="camera-shell" id="cameraFrame">
+                    <video id="video" class="camera-video" autoplay playsinline muted></video>
+                    <img id="guideImage" class="guide-image" src="{% static 'Poses/DownDogEg.jpg' %}" alt="Guide silhouette">
+                    <canvas id="overlay" class="camera-overlay"></canvas>
+
+                    <div id="overlayBadge" class="overlay-badge">
+                        Waiting for camera
+                    </div>
+
+                    <div id="cameraStatusBanner" class="camera-status">
+                        Camera stopped
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-3 gap-3">
+                    <div class="metric-card">
+                        <div class="metric-label">Live Status</div>
+                        <div id="liveStatusText" class="metric-value">Waiting</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Live Score</div>
+                        <div id="liveScoreText" class="metric-value">-</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Detected Quality</div>
+                        <div id="rightQualityText" class="metric-value">-</div>
+                    </div>
+                </div>
+            </section>
+
+            <aside class="glass rounded-[2rem] p-5 flex flex-col gap-4">
+                <div>
+                    <h2 class="panel-title text-emerald-300">Live Coaching</h2>
+                    <p class="text-slate-400 mt-1">Feedback from backend response.</p>
+                </div>
+
+                <div class="rounded-[1.6rem] p-5 bg-yellow-400/10 border border-yellow-300/25">
+                    <div class="text-slate-300 text-sm mb-2">Main Feedback</div>
+                    <div id="liveInstructionText" class="feedback-main">Waiting for pose</div>
+                </div>
+
+                <div class="rounded-[1.6rem] p-5 bg-emerald-400/10 border border-emerald-300/20">
+                    <div class="text-slate-300 text-sm mb-2">Guidance</div>
+                    <div id="guidanceHeadline" class="feedback-sub">Start the camera and move into Down Dog.</div>
+                </div>
+
+                <div class="metric-card flex-1 overflow-auto">
+                    <div class="metric-label mb-3">Detailed Tips</div>
+                    <ul id="detailsList" class="tips-list">
+                        <li>No tips yet</li>
+                    </ul>
+                </div>
+            </aside>
+
+        </section>
+    </main>
+
+    <script>
+        const video = document.getElementById("video");
+        const overlay = document.getElementById("overlay");
+        const overlayCtx = overlay.getContext("2d");
+        const cameraFrame = document.getElementById("cameraFrame");
+
+        const openGuideBtn = document.getElementById("openGuideBtn");
+        const closeGuideBtn = document.getElementById("closeGuideBtn");
+        const guidePanel = document.getElementById("guidePanel");
+        const guideBackdrop = document.getElementById("guideBackdrop");
+
+        const startBtn = document.getElementById("startBtn");
+        const stopBtn = document.getElementById("stopBtn");
+
+        const overlayBadge = document.getElementById("overlayBadge");
+        const cameraStatusBanner = document.getElementById("cameraStatusBanner");
+
+        let stream = null;
+        let predictIntervalId = null;
+        let requestInFlight = false;
+        let lastPayload = null;
+
+        const JPEG_QUALITY = 0.78;
+        const PREDICT_EVERY_MS = 260;
+
+        function openGuide() {
+            guidePanel.classList.add("open");
+            guideBackdrop.classList.add("show");
+        }
+
+        function closeGuide() {
+            guidePanel.classList.remove("open");
+            guideBackdrop.classList.remove("show");
+        }
+
+        openGuideBtn.addEventListener("click", openGuide);
+        closeGuideBtn.addEventListener("click", closeGuide);
+        guideBackdrop.addEventListener("click", closeGuide);
+
+        function setStatusClass(el, status) {
+            el.classList.remove("status-good", "status-warn", "status-bad", "status-neutral");
+
+            const s = String(status || "").toLowerCase();
+            if (s.includes("perfect") || s.includes("good")) {
+                el.classList.add("status-good");
+            } else if (s.includes("warning")) {
+                el.classList.add("status-warn");
+            } else if (s.includes("unknown") || s.includes("not")) {
+                el.classList.add("status-bad");
+            } else {
+                el.classList.add("status-neutral");
+            }
+        }
+
+        function getCanvasSize() {
+            const rect = cameraFrame.getBoundingClientRect();
+            return { width: rect.width, height: rect.height };
+        }
+
+        function resizeOverlay() {
+            const rect = cameraFrame.getBoundingClientRect();
+            const dpr = window.devicePixelRatio || 1;
+
+            overlay.width = Math.round(rect.width * dpr);
+            overlay.height = Math.round(rect.height * dpr);
+            overlay.style.width = rect.width + "px";
+            overlay.style.height = rect.height + "px";
+
+            overlayCtx.setTransform(1, 0, 0, 1, 0, 0);
+            overlayCtx.scale(dpr, dpr);
+
+            drawOverlay(lastPayload);
+        }
+
+        function mapPoint(xNorm, yNorm) {
+            const { width, height } = getCanvasSize();
+            const x = width - (xNorm * width);
+            const y = yNorm * height;
+            return { x, y };
+        }
+
+        function drawPoint(x, y, radius, color) {
+            overlayCtx.beginPath();
+            overlayCtx.arc(x, y, radius + 4, 0, Math.PI * 2);
+            overlayCtx.fillStyle =
+                color === "#00ff66" ? "rgba(0,255,102,0.18)" :
+                color === "#ff3b30" ? "rgba(255,59,48,0.16)" :
+                "rgba(255,214,10,0.18)";
+            overlayCtx.fill();
+
+            overlayCtx.beginPath();
+            overlayCtx.arc(x, y, radius, 0, Math.PI * 2);
+            overlayCtx.fillStyle = color || "#ffd60a";
+            overlayCtx.fill();
+        }
+
+        function drawAngleLabel(x, y, text) {
+            overlayCtx.font = "bold 14px Arial";
+            const padX = 8;
+            const boxH = 24;
+            const textW = overlayCtx.measureText(text).width;
+            const boxW = Math.max(42, textW + padX * 2);
+            const boxX = x + 10;
+            const boxY = y - 28;
+
+            overlayCtx.fillStyle = "rgba(0,0,0,0.64)";
+            overlayCtx.beginPath();
+            overlayCtx.roundRect(boxX, boxY, boxW, boxH, 7);
+            overlayCtx.fill();
+
+            overlayCtx.fillStyle = "#ffffff";
+            overlayCtx.fillText(text, boxX + padX, boxY + 16);
+        }
+
+        function drawOverlay(data) {
+            const { width, height } = getCanvasSize();
+            overlayCtx.clearRect(0, 0, width, height);
+
+            if (!data || !Array.isArray(data.points) || data.points.length === 0) return;
+
+            for (const pt of data.points) {
+                if (!pt.visible) continue;
+                const mapped = mapPoint(pt.x, pt.y);
+                drawPoint(mapped.x, mapped.y, pt.radius || 6, pt.color || "#ffd60a");
+            }
+
+            if (Array.isArray(data.angle_texts)) {
+                for (const item of data.angle_texts) {
+                    const mapped = mapPoint(item.x, item.y);
+                    drawAngleLabel(mapped.x, mapped.y, item.text);
+                }
+            }
+        }
+
+        function updateOverlayBadge(pose, score, status) {
+            overlayBadge.textContent = `${pose || "-"} • ${score ?? "-"}`;
+
+            const s = String(status || "").toLowerCase();
+            if (s.includes("perfect") || Number(score) >= 90) {
+                overlayBadge.style.background = "rgba(22,163,74,0.82)";
+            } else if (Number(score) >= 60 || s.includes("warning")) {
+                overlayBadge.style.background = "rgba(245,158,11,0.82)";
+            } else {
+                overlayBadge.style.background = "rgba(225,29,72,0.82)";
+            }
+        }
+
+        function updateUI(data) {
+            lastPayload = data;
+
+            const pose = data.pose || "-";
+            const status = data.status || "-";
+            const score = Number(data.score || 0);
+            const quality = (data.quality || "-").replaceAll("_", " ");
+            const feedback = data.feedback || "Adjust posture";
+            const coachText = data.coach_text || feedback || "Follow the guidance";
+            const details = Array.isArray(data.details) ? data.details : [];
+
+            document.getElementById("poseText").textContent = pose;
+            document.getElementById("statusText").textContent = status;
+            document.getElementById("confidenceText").textContent = `${((data.confidence || 0) * 100).toFixed(1)}%`;
+            document.getElementById("scoreText").textContent = data.score ?? "-";
+            document.getElementById("qualityText").textContent = quality;
+            document.getElementById("modelPoseText").textContent = data.model_pose || "-";
+
+            document.getElementById("liveStatusText").textContent = status;
+            document.getElementById("liveScoreText").textContent = data.score ?? "-";
+            document.getElementById("rightQualityText").textContent = quality;
+
+            document.getElementById("liveInstructionText").textContent = feedback;
+            document.getElementById("guidanceHeadline").textContent = coachText;
+
+            document.getElementById("leftElbowAngle").textContent = data.angles?.left_elbow_angle ?? "-";
+            document.getElementById("rightElbowAngle").textContent = data.angles?.right_elbow_angle ?? "-";
+            document.getElementById("leftKneeAngle").textContent = data.angles?.left_knee_angle ?? "-";
+            document.getElementById("rightKneeAngle").textContent = data.angles?.right_knee_angle ?? "-";
+
+            const detailsList = document.getElementById("detailsList");
+            const safeItems = details
+                .map(item => String(item).trim())
+                .filter(Boolean);
+
+            detailsList.innerHTML = safeItems.length
+                ? safeItems.map(item => `<li>${item.replaceAll("_", " ")}</li>`).join("")
+                : "<li>Hold steady and follow the main guidance.</li>";
+
+            setStatusClass(document.getElementById("statusText"), status);
+            setStatusClass(document.getElementById("liveStatusText"), status);
+
+            updateOverlayBadge(pose, score, status);
+            cameraStatusBanner.textContent = stream ? "Live analysis running" : "Camera stopped";
+
+            drawOverlay(data);
+        }
+
+        function resetUI() {
+            lastPayload = null;
+
+            overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
+
+            document.getElementById("poseText").textContent = "-";
+            document.getElementById("statusText").textContent = "Waiting";
+            document.getElementById("confidenceText").textContent = "-";
+            document.getElementById("scoreText").textContent = "-";
+            document.getElementById("qualityText").textContent = "-";
+            document.getElementById("modelPoseText").textContent = "-";
+
+            document.getElementById("liveStatusText").textContent = "Waiting";
+            document.getElementById("liveScoreText").textContent = "-";
+            document.getElementById("rightQualityText").textContent = "-";
+
+            document.getElementById("liveInstructionText").textContent = "Waiting for pose";
+            document.getElementById("guidanceHeadline").textContent = "Start the camera and move into Down Dog.";
+
+            document.getElementById("leftElbowAngle").textContent = "-";
+            document.getElementById("rightElbowAngle").textContent = "-";
+            document.getElementById("leftKneeAngle").textContent = "-";
+            document.getElementById("rightKneeAngle").textContent = "-";
+
+            document.getElementById("detailsList").innerHTML = "<li>No tips yet</li>";
+
+            overlayBadge.textContent = "Waiting for camera";
+            overlayBadge.style.background = "rgba(15,23,42,0.75)";
+            cameraStatusBanner.textContent = stream ? "Camera ready" : "Camera stopped";
+
+            setStatusClass(document.getElementById("statusText"), "");
+            setStatusClass(document.getElementById("liveStatusText"), "");
+        }
+
+        async function captureAndPredict() {
+            if (!stream || requestInFlight || !video.videoWidth || !video.videoHeight) return;
+
+            requestInFlight = true;
+
+            try {
+                const canvas = document.createElement("canvas");
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+
+                const ctx = canvas.getContext("2d");
+                ctx.translate(canvas.width, 0);
+                ctx.scale(-1, 1);
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+                const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/jpeg", JPEG_QUALITY));
+                if (!blob) return;
+
+                const fd = new FormData();
+                fd.append("image", blob, "frame.jpg");
+
+                const res = await fetch("{% url 'User:down_dog_live_api' %}", {
+                    method: "POST",
+                    body: fd
+                });
+
+                const data = await res.json();
+                if (data && data.success) {
+                    updateUI(data);
+                } else {
+                    console.error("API error:", data);
+                }
+            } catch (err) {
+                console.error("captureAndPredict error:", err);
+            } finally {
+                requestInFlight = false;
+            }
+        }
+
+        function startPredictionLoop() {
+            stopPredictionLoop();
+            predictIntervalId = setInterval(captureAndPredict, PREDICT_EVERY_MS);
+        }
+
+        function stopPredictionLoop() {
+            if (predictIntervalId) {
+                clearInterval(predictIntervalId);
+                predictIntervalId = null;
+            }
+        }
+
+        async function startCamera() {
+            if (stream) return;
+
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: "user",
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    },
+                    audio: false
+                });
+
+                video.srcObject = stream;
+                video.onloadedmetadata = () => {
+                    resizeOverlay();
+                    startPredictionLoop();
+                    cameraStatusBanner.textContent = "Live analysis running";
+                };
+            } catch (err) {
+                console.error("Camera start failed:", err);
+                cameraStatusBanner.textContent = "Camera access failed";
+            }
+        }
+
+        function stopCamera() {
+            stopPredictionLoop();
+
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+
+            stream = null;
+            video.srcObject = null;
+            resetUI();
+        }
+
+        startBtn.addEventListener("click", startCamera);
+        stopBtn.addEventListener("click", stopCamera);
+        window.addEventListener("resize", resizeOverlay);
+
+        resetUI();
+    </script>
+</body>
+</html>
