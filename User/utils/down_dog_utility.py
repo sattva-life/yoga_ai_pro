@@ -379,8 +379,8 @@ def dd_build_feature_dataframe_from_landmarks(landmarks):
 
 
 def dd_predict_model_label(features_df):
-    features_array = features_df.to_numpy(dtype=np.float32)
-    scaled_features = downdog_scaler.transform(features_array)
+    features_df = features_df.astype(np.float32)
+    scaled_features = downdog_scaler.transform(features_df)
 
     prediction = downdog_model.predict(scaled_features)[0]
 
@@ -390,7 +390,6 @@ def dd_predict_model_label(features_df):
         confidence = float(np.max(probs))
 
     return str(prediction), confidence
-
 
 # =========================================================
 # VISIBILITY / FRAMING
