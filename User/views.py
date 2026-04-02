@@ -1227,6 +1227,13 @@ def predict_yoga_pose(request):
 
 
 
+
+
+
+
+
+
+
 # =========================================================
 # DOWN DOG - MEDIAPIPE SETUP
 # =========================================================
@@ -1241,7 +1248,7 @@ down_dog_pose_detector = mp_pose.Pose(
 
 
 # =========================================================
-# DOWN DOG - LANDMARK INDEXES
+# DOWN DOG - MAIN LANDMARK INDEXES USED FOR ANALYSIS/OVERLAY
 # =========================================================
 DD_NOSE = 0
 DD_LEFT_SHOULDER = 11
@@ -1283,34 +1290,37 @@ DD_POINT_NAME_MAP = {
     DD_RIGHT_ANKLE: "right_ankle",
 }
 
-DD_LANDMARK_NAME_TO_INDEX = {
-    "nose": DD_NOSE,
-    "left_shoulder": DD_LEFT_SHOULDER,
-    "right_shoulder": DD_RIGHT_SHOULDER,
-    "left_elbow": DD_LEFT_ELBOW,
-    "right_elbow": DD_RIGHT_ELBOW,
-    "left_wrist": DD_LEFT_WRIST,
-    "right_wrist": DD_RIGHT_WRIST,
-    "left_hip": DD_LEFT_HIP,
-    "right_hip": DD_RIGHT_HIP,
-    "left_knee": DD_LEFT_KNEE,
-    "right_knee": DD_RIGHT_KNEE,
-    "left_ankle": DD_LEFT_ANKLE,
-    "right_ankle": DD_RIGHT_ANKLE,
-}
 
-DD_FEATURE_LANDMARK_NAMES = [
+# =========================================================
+# DOWN DOG - FULL 33 LANDMARKS FOR MODEL INPUT (138 FEATURES)
+# 33 landmarks * 4 values (x,y,z,visibility) = 132
+# + 6 angle features = 138
+# =========================================================
+DD_ALL_LANDMARK_NAMES = [
     "nose",
+    "left_eye_inner", "left_eye", "left_eye_outer",
+    "right_eye_inner", "right_eye", "right_eye_outer",
+    "left_ear", "right_ear",
+    "mouth_left", "mouth_right",
     "left_shoulder", "right_shoulder",
     "left_elbow", "right_elbow",
     "left_wrist", "right_wrist",
+    "left_pinky", "right_pinky",
+    "left_index", "right_index",
+    "left_thumb", "right_thumb",
     "left_hip", "right_hip",
     "left_knee", "right_knee",
     "left_ankle", "right_ankle",
+    "left_heel", "right_heel",
+    "left_foot_index", "right_foot_index",
 ]
 
+DD_ALL_LANDMARK_NAME_TO_INDEX = {
+    name: idx for idx, name in enumerate(DD_ALL_LANDMARK_NAMES)
+}
+
 DD_FEATURE_COLUMNS = []
-for name in DD_FEATURE_LANDMARK_NAMES:
+for name in DD_ALL_LANDMARK_NAMES:
     DD_FEATURE_COLUMNS.extend([
         f"{name}_x",
         f"{name}_y",
@@ -1352,7 +1362,9 @@ def resolve_down_dog_model_path(filename: str) -> Path:
             return path
 
     checked = "\n".join(str(p) for p in candidates)
-    raise FileNotFoundError(f"Could not find model file: {filename}\nChecked:\n{checked}")
+    raise FileNotFoundError(
+        f"Could not find model file: {filename}\nChecked:\n{checked}"
+    )
 
 
 DOWNDOG_MODEL_PATH = resolve_down_dog_model_path("downdog_best_model.pkl")
@@ -1462,7 +1474,7 @@ def dd_calculate_angle(a, b, c):
 # =========================================================
 def dd_extract_raw_landmark_dict(landmarks):
     lm_dict = {}
-    for name, idx in DD_LANDMARK_NAME_TO_INDEX.items():
+    for name, idx in DD_ALL_LANDMARK_NAME_TO_INDEX.items():
         lm = landmarks[idx]
         lm_dict[name] = {
             "x": float(lm.x),
@@ -1482,10 +1494,13 @@ def dd_normalize_landmarks_inplace(lm_dict):
         lm_dict[name]["y"] -= left_hip_y
 
 
-def dd_extract_angles_from_dict(lm_dict):
+def dd_build_feature_dataframe_from_landmarks(landmarks):
+    lm_dict = dd_extract_raw_landmark_dict(landmarks)
+    dd_normalize_landmarks_inplace(lm_dict)
+
     points = {name: [vals["x"], vals["y"]] for name, vals in lm_dict.items()}
 
-    return {
+    angles = {
         "left_knee_angle": dd_calculate_angle(
             points["left_hip"], points["left_knee"], points["left_ankle"]
         ),
@@ -1506,14 +1521,8 @@ def dd_extract_angles_from_dict(lm_dict):
         ),
     }
 
-
-def dd_build_feature_dataframe_from_landmarks(landmarks):
-    lm_dict = dd_extract_raw_landmark_dict(landmarks)
-    dd_normalize_landmarks_inplace(lm_dict)
-    angles = dd_extract_angles_from_dict(lm_dict)
-
     row = {}
-    for name in DD_FEATURE_LANDMARK_NAMES:
+    for name in DD_ALL_LANDMARK_NAMES:
         row[f"{name}_x"] = lm_dict[name]["x"]
         row[f"{name}_y"] = lm_dict[name]["y"]
         row[f"{name}_z"] = lm_dict[name]["z"]
@@ -1527,7 +1536,9 @@ def dd_build_feature_dataframe_from_landmarks(landmarks):
 
 
 def dd_predict_model_label(features_df):
-    scaled_features = downdog_scaler.transform(features_df)
+    features_array = features_df.to_numpy(dtype=np.float32)
+    scaled_features = downdog_scaler.transform(features_array)
+
     prediction = downdog_model.predict(scaled_features)[0]
 
     confidence = 0.50
@@ -1542,44 +1553,20 @@ def dd_predict_model_label(features_df):
 # DOWN DOG - VISIBILITY / FRAMING
 # =========================================================
 def dd_check_body_visibility(lm_dict):
-    visibilities = [lm_dict[name]["visibility"] for name in lm_dict]
-    visible_count = sum(v > 0.35 for v in visibilities)
+    important_names = [
+        "left_shoulder", "right_shoulder",
+        "left_elbow", "right_elbow",
+        "left_wrist", "right_wrist",
+        "left_hip", "right_hip",
+        "left_knee", "right_knee",
+        "left_ankle", "right_ankle",
+    ]
+
+    visibilities = [lm_dict[name]["visibility"] for name in important_names]
+    visible_count = sum(v > 0.30 for v in visibilities)
     avg_visibility = float(np.mean(visibilities))
 
-    shoulders_visible = (
-        lm_dict["left_shoulder"]["visibility"] > 0.40 and
-        lm_dict["right_shoulder"]["visibility"] > 0.40
-    )
-
-    wrists_visible = (
-        lm_dict["left_wrist"]["visibility"] > 0.25 and
-        lm_dict["right_wrist"]["visibility"] > 0.25
-    )
-
-    hips_visible = (
-        lm_dict["left_hip"]["visibility"] > 0.40 and
-        lm_dict["right_hip"]["visibility"] > 0.40
-    )
-
-    knees_visible = (
-        lm_dict["left_knee"]["visibility"] > 0.25 and
-        lm_dict["right_knee"]["visibility"] > 0.25
-    )
-
-    ankles_visible = (
-        lm_dict["left_ankle"]["visibility"] > 0.15 and
-        lm_dict["right_ankle"]["visibility"] > 0.15
-    )
-
-    full_body_visible = (
-        visible_count >= 8 and
-        shoulders_visible and
-        wrists_visible and
-        hips_visible and
-        knees_visible and
-        ankles_visible
-    )
-
+    full_body_visible = visible_count >= 10
     return full_body_visible, visible_count, avg_visibility
 
 
@@ -1611,7 +1598,7 @@ def dd_check_frame_position(raw_pts):
 
 
 # =========================================================
-# DOWN DOG - POSE ANALYSIS
+# DOWN DOG - ANALYSIS
 # =========================================================
 def analyze_down_dog_pose(raw_pts):
     ls, rs = raw_pts[DD_LEFT_SHOULDER], raw_pts[DD_RIGHT_SHOULDER]
@@ -1696,7 +1683,7 @@ def analyze_down_dog_pose(raw_pts):
         tips = [
             "Excellent posture.",
             "Keep breathing steadily.",
-            "Maintain the inverted V shape."
+            "Maintain the inverted V shape.",
         ]
 
     checks = {
@@ -1708,13 +1695,6 @@ def analyze_down_dog_pose(raw_pts):
         "hands_far_from_feet": hands_far_from_feet,
         "back_length_good": back_length_good,
         "shoulder_open_ok": shoulder_open_ok,
-        "full_down_dog_gate": (
-            hips_above_shoulders and
-            arms_straight and
-            legs_long and
-            shoulder_open_ok and
-            head_between_arms
-        ),
     }
 
     return {
@@ -1864,6 +1844,9 @@ def down_dog_live_api(request):
         features_df, lm_dict, angles = dd_build_feature_dataframe_from_landmarks(landmarks)
         raw_pts = np.array([[lm.x, lm.y, lm.z] for lm in landmarks], dtype=np.float32)
 
+        # optional debug
+        print("DownDog feature count:", features_df.shape[1])
+
         full_body_visible, visible_count, avg_visibility = dd_check_body_visibility(lm_dict)
         framing_feedback = dd_check_frame_position(raw_pts)
 
@@ -1929,5 +1912,12 @@ def down_dog_live_api(request):
         )
 
     except Exception as e:
+        import traceback
         print("down_dog_live_api error:", str(e))
-        return down_dog_api_error(str(e), status=500)
+        traceback.print_exc()
+
+        return JsonResponse({
+            "success": False,
+            "error": str(e),
+            "error_type": type(e).__name__,
+        }, status=500)
