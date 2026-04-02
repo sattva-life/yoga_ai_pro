@@ -377,14 +377,17 @@ def dd_build_feature_dataframe_from_landmarks(landmarks):
     features_df = pd.DataFrame([row], columns=DD_MODEL_COLUMNS)
     return features_df, lm_dict, angles
 
-
 def dd_predict_model_label(features_df):
-    # keep same order, only rename columns to numeric string/int style
+    # keep as DataFrame, because scaler was fitted with feature names
     features_df = features_df.astype(np.float32).copy()
-    features_df.columns = list(range(features_df.shape[1]))
 
+    # your saved scaler expects numeric feature names like 0,1,2,3...
+    features_df.columns = [str(i) for i in range(features_df.shape[1])]
+
+    # transform with DataFrame, not numpy
     scaled_features = downdog_scaler.transform(features_df)
 
+    # many sklearn models are fine with numpy after scaling
     prediction = downdog_model.predict(scaled_features)[0]
 
     confidence = 0.50
