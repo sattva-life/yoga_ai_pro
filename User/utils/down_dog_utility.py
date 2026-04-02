@@ -378,16 +378,64 @@ def dd_build_feature_dataframe_from_landmarks(landmarks):
     return features_df, lm_dict, angles
 
 def dd_predict_model_label(features_df):
-    # keep as DataFrame, because scaler was fitted with feature names
+    import warnings
+
+    # always start from a float DataFrame
     features_df = features_df.astype(np.float32).copy()
 
-    # your saved scaler expects numeric feature names like 0,1,2,3...
-    features_df.columns = [str(i) for i in range(features_df.shape[1])]
+    # scaler/model may have been trained with named columns
+    expected_names = getattr(downdog_scaler, "feature_names_in_", None)
+    expected_count = getattr(downdog_scaler, "n_features_in_", features_df.shape[1])
 
-    # transform with DataFrame, not numpy
-    scaled_features = downdog_scaler.transform(features_df)
+    X_for_scaler = None
 
-    # many sklearn models are fine with numpy after scaling
+    # -----------------------------------------------------
+    # CASE 1: scaler has feature names and they match runtime columns
+    # -----------------------------------------------------
+    if expected_names is not None:
+        expected_names = [str(x) for x in expected_names]
+        current_names = [str(x) for x in features_df.columns]
+
+        # direct name match
+        if set(expected_names).issubset(set(current_names)):
+            X_for_scaler = features_df[expected_names]
+
+        # numeric-name match like 0,1,2,... stored as strings
+        elif len(expected_names) == features_df.shape[1] and expected_names == [str(i) for i in range(features_df.shape[1])]:
+            temp_df = features_df.copy()
+            temp_df.columns = [str(i) for i in range(temp_df.shape[1])]
+            X_for_scaler = temp_df[expected_names]
+
+        # numeric-name match like 0,1,2,... stored as ints
+        elif len(expected_names) == features_df.shape[1] and expected_names == list(range(features_df.shape[1])):
+            temp_df = features_df.copy()
+            temp_df.columns = list(range(temp_df.shape[1]))
+            X_for_scaler = temp_df[expected_names]
+
+    # -----------------------------------------------------
+    # CASE 2: fallback to numpy if names do not match
+    # this avoids feature-name mismatch crashes
+    # -----------------------------------------------------
+    if X_for_scaler is None:
+        X_array = features_df.to_numpy(dtype=np.float32)
+
+        if X_array.shape[1] != expected_count:
+            raise ValueError(
+                f"Feature count mismatch: scaler expects {expected_count}, "
+                f"but runtime produced {X_array.shape[1]} features."
+            )
+
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message="X does not have valid feature names, but StandardScaler was fitted with feature names"
+            )
+            scaled_features = downdog_scaler.transform(X_array)
+    else:
+        scaled_features = downdog_scaler.transform(X_for_scaler)
+
+    scaled_features = np.asarray(scaled_features, dtype=np.float32)
+
     prediction = downdog_model.predict(scaled_features)[0]
 
     confidence = 0.50
