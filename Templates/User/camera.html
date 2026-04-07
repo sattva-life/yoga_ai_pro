@@ -7,6 +7,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Yoga Camera</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
     <style>
         html,
@@ -547,13 +548,19 @@
 
                             <video id="video" autoplay playsinline muted
                                 class="absolute inset-0 w-full h-full object-cover bg-black z-0 mirrored-layer"></video>
+                            <div id="countdownOverlay"
+                                class="absolute inset-0 flex items-center justify-center z-40 hidden transition-opacity duration-300">
+                                <div
+                                    class="bg-emerald-500/80 backdrop-blur-md text-white rounded-full w-36 h-36 flex items-center justify-center text-7xl font-black border-4 border-emerald-300/50 shadow-[0_0_50px_rgba(16,185,129,0.6)]">
+                                    <span id="countdownText">10</span>
+                                </div>
+                            </div>
 
                             <div id="freezeLayer" class="freeze-layer">
                                 <img id="freezeFrameImage" alt="Frozen perfect pose frame">
                             </div>
 
-                            <div id="poseOutline" 
-                                alt="Tree Pose Outline Guide"
+                            <div id="poseOutline" alt="Tree Pose Outline Guide"
                                 class="outline-guide outline-yellow absolute left-1/2 bottom-0 -translate-x-1/2 w-auto max-w-none object-contain pointer-events-none z-10"
                                 style="height: 95%;"></div>
 
@@ -585,6 +592,11 @@
                             <button type="button" id="resumeBtn" onclick="resumeCamera()"
                                 class="camera-btn bg-sky-500 hover:bg-sky-600 transition">
                                 Resume
+                            </button>
+
+                            <button type="button" id="downloadReportBtn" onclick="generatePDFReport()"
+                                class="camera-btn bg-indigo-500 hover:bg-indigo-600 transition hidden">
+                                Report
                             </button>
                         </div>
                     </div>
@@ -624,6 +636,16 @@
     </main>
 
     <script>
+        // Voice Feedback State
+        const synth = window.speechSynthesis;
+        let lastSpokenText = "";
+        let lastSpokenTime = 0;
+        const SPEECH_COOLDOWN_MS = 30000; // 30 seconds for IDENTICAL comments only
+        let currentSpeechPriority = 0; // 0 = general, 1 = important/countdown
+        window.activeUtterance = null; // Anti-garbage-collection for Chrome
+
+
+
         const video = document.getElementById("video");
         const overlay = document.getElementById("overlay");
         const overlayCtx = overlay.getContext("2d");
@@ -640,6 +662,7 @@
         const startBtn = document.getElementById("startBtn");
         const stopBtn = document.getElementById("stopBtn");
         const resumeBtn = document.getElementById("resumeBtn");
+        const downloadReportBtn = document.getElementById("downloadReportBtn"); // Add this line
 
         let stream = null;
         let isFrozen = false;
@@ -652,11 +675,13 @@
         let anglesVisible = false;
 
         const MIRROR_PREVIEW = true;
-        const FREEZE_THRESHOLD_FRAMES = 3;
+        const TARGET_HOLD_SECONDS = 10;
+        const countdownOverlay = document.getElementById("countdownOverlay");
+        const countdownText = document.getElementById("countdownText");
         const PREDICT_EVERY_MS = 260;
+        let lastSpokenSecond = 0;
         const JPEG_QUALITY = 0.72;
 
-        // lightweight display smoothing only
         const DISPLAY_POINT_STATE = new Map();
 
         function toggleGuide() {
@@ -684,7 +709,11 @@
             startBtn.disabled = !!stream || isStarting;
             stopBtn.disabled = !stream;
             resumeBtn.disabled = !stream || !isFrozen;
+            downloadReportBtn.disabled = !stream || !isFrozen; // Manage disabled state
             [startBtn, stopBtn, resumeBtn].forEach(btn => btn.classList.toggle("opacity-60", btn.disabled));
+            // Toggle visibility based on freeze state
+            resumeBtn.classList.toggle("hidden", !isFrozen);
+            downloadReportBtn.classList.toggle("hidden", !isFrozen);
         }
 
         function resizeOverlay() {
@@ -753,7 +782,6 @@
             const dy = Math.abs(y - prev.y);
             const dist = Math.sqrt(dx * dx + dy * dy);
 
-            // adaptive smoothing: small moves smooth more, large moves follow faster
             let alpha = 0.42;
             if (dist > 45) alpha = 0.82;
             else if (dist > 20) alpha = 0.62;
@@ -867,8 +895,18 @@
             document.getElementById("qualityText").textContent = (data.quality || "-").replaceAll("_", " ");
             document.getElementById("holdText").textContent = `${Number(data.hold_time || 0).toFixed(1)}s`;
 
-            document.getElementById("liveInstructionText").textContent = data.feedback || "Adjust posture";
-            document.getElementById("guidanceHeadline").textContent = data.coach_text || data.feedback || "Follow the guide";
+            const mainFeedback = data.feedback || "Adjust posture";
+            const coachMessage = data.coach_text || mainFeedback || "Follow the guide";
+
+            document.getElementById("liveInstructionText").textContent = mainFeedback;
+            document.getElementById("guidanceHeadline").textContent = coachMessage;
+
+            // Trigger general voice feedback (Priority 0) ONLY if not in a perfect hold.
+            // If the text is the same, it waits 30 seconds. If it changes, it speaks instantly.
+            if (!isPerfect) {
+                speakFeedback(mainFeedback, 0);
+            }
+
             document.getElementById("leftKneeAngle").textContent = data.angles?.left_knee_angle ?? "-";
             document.getElementById("rightKneeAngle").textContent = data.angles?.right_knee_angle ?? "-";
             document.getElementById("torsoTilt").textContent = data.angles?.torso_tilt ?? "-";
@@ -888,10 +926,10 @@
 
             badge.textContent = `${pose} (${score})`;
             badge.className = `absolute top-4 left-4 px-4 py-3 rounded-2xl text-white text-lg font-semibold border z-20 ${isPerfect
-                    ? "bg-emerald-500/80 border-emerald-300/30"
-                    : score >= 60
-                        ? "bg-amber-500/80 border-amber-300/30"
-                        : "bg-rose-500/80 border-rose-300/30"
+                ? "bg-emerald-500/80 border-emerald-300/30"
+                : score >= 60
+                    ? "bg-amber-500/80 border-amber-300/30"
+                    : "bg-rose-500/80 border-rose-300/30"
                 }`;
 
             stateBadge.textContent = status;
@@ -903,11 +941,46 @@
             autoScaleOutlineFromPoints(data.points || []);
             drawOverlay(data);
 
-            if (isPerfect) perfectHoldFrames++;
-            else perfectHoldFrames = 0;
+            const holdTime = Number(data.hold_time || 0);
 
-            if (!isFrozen && perfectHoldFrames >= FREEZE_THRESHOLD_FRAMES) {
-                freezeCurrentFrame();
+            if (isPerfect) {
+                perfectHoldFrames++;
+
+                const remaining = Math.max(0, TARGET_HOLD_SECONDS - holdTime);
+                const currentSecond = Math.ceil(remaining);
+
+                // Speak exactly once when the perfect pose first starts (Priority 1)
+                if (perfectHoldFrames === 1) {
+                    speakFeedback(`Your pose is correct, hold for ${TARGET_HOLD_SECONDS} seconds.`, 1);
+                    lastSpokenSecond = TARGET_HOLD_SECONDS;
+                }
+
+                // Update visual countdown
+                countdownOverlay.classList.remove("hidden");
+                countdownText.textContent = currentSecond;
+
+                // Voice countdown (Starts at 7 to allow the intro sentence to finish)
+                if (currentSecond < lastSpokenSecond && currentSecond <= 7 && currentSecond > 0) {
+                    speakFeedback(currentSecond.toString(), 1);
+                    lastSpokenSecond = currentSecond;
+                }
+
+                // Freeze only when the 10 seconds are reached
+                if (!isFrozen && holdTime >= TARGET_HOLD_SECONDS) {
+                    countdownOverlay.classList.add("hidden");
+                    freezeCurrentFrame();
+                    speakFeedback("Great job! You completed the pose.", 1);
+                    setCameraBanner("10 Second Hold Complete!");
+                }
+            } else {
+                // Pose broken: Reset everything
+                if (perfectHoldFrames > 0) {
+                    synth.cancel(); // Instantly stop talking if they break pose
+                    currentSpeechPriority = 0;
+                }
+                perfectHoldFrames = 0;
+                lastSpokenSecond = 0;
+                countdownOverlay.classList.add("hidden");
             }
         }
 
@@ -1036,6 +1109,8 @@
                 stream.getTracks().forEach(track => track.stop());
             }
 
+            if (synth) synth.cancel();
+
             stream = null;
             video.srcObject = null;
             resetUI();
@@ -1054,7 +1129,10 @@
             lastPayload = null;
             isFrozen = false;
             perfectHoldFrames = 0;
+            lastSpokenSecond = 0;
+            currentSpeechPriority = 0;
             freezeLayer.classList.remove("show");
+            countdownOverlay.classList.add("hidden");
             resetDisplayPointState();
 
             const { width, height } = getCanvasCssSize();
@@ -1085,11 +1163,142 @@
             setOutlineState("yellow");
             setCameraBanner(stream ? "Ready" : "Stopped");
             setButtonsState();
+
+            if (synth) synth.cancel();
         }
 
         window.addEventListener("resize", resizeOverlay);
         resetUI();
+
+        // SMART VOICE LOGIC
+        function speakFeedback(text, priority = 0) {
+            if (!synth || !text || text === "-" || text === "Waiting...") return;
+
+            const now = Date.now();
+
+            // 1. Same Text Cooldown: Wait 30 seconds IF AND ONLY IF it's the exact same general comment
+            if (text === lastSpokenText && priority === 0) {
+                if ((now - lastSpokenTime) < SPEECH_COOLDOWN_MS) {
+                    return;
+                }
+            }
+
+            // 2. Interruption Logic
+            if (synth.speaking) {
+                // Do NOT interrupt the countdown with general feedback
+                if (priority < currentSpeechPriority) return;
+
+                // If it's a DIFFERENT comment, or a high-priority message, stop current speech instantly
+                synth.cancel();
+            }
+
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.rate = 1.0;
+            utterance.pitch = 1.0;
+
+            const voices = synth.getVoices();
+            const preferredVoice = voices.find(v => v.name.includes("Female") || v.name.includes("Samantha") || v.name.includes("Google US English"));
+            if (preferredVoice) utterance.voice = preferredVoice;
+
+            // Reset priority when done speaking
+            utterance.onend = function () {
+                currentSpeechPriority = 0;
+            };
+
+            // Anti-Garbage-Collection hack to stop the voice from randomly cutting off
+            window.activeUtterance = utterance;
+
+            currentSpeechPriority = priority;
+            synth.speak(utterance);
+
+            lastSpokenText = text;
+            lastSpokenTime = now;
+        }
+
+        async function generatePDFReport() {
+    // 1. Initialize jsPDF
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+
+    // 2. Set Header
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(22);
+    doc.setTextColor(6, 78, 59); // Emerald color
+    doc.text("Tree Pose Pro Coach - Session Report", 20, 20);
+
+    // 3. Embed the frozen camera frame
+    const imgData = freezeFrameImage.src;
+    if (imgData) {
+        // Adjust width/height to look good on standard A4 while maintaining ratio
+        doc.addImage(imgData, 'JPEG', 20, 30, 170, 96);
+    }
+
+    // 4. Add Statistics
+    doc.setFontSize(16);
+    doc.setTextColor(0, 0, 0);
+    doc.text("Performance Summary", 20, 140);
+    
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(12);
+    
+    const pose = document.getElementById("poseText").textContent;
+    const score = document.getElementById("scoreText").textContent;
+    const hold = document.getElementById("holdText").textContent;
+    const quality = document.getElementById("qualityText").textContent;
+    const confidence = document.getElementById("confidenceText").textContent;
+    
+    doc.text(`Detected Pose: ${pose}`, 20, 150);
+    doc.text(`Confidence: ${confidence}`, 20, 158);
+    doc.text(`Score: ${score}`, 20, 166);
+    doc.text(`Quality: ${quality}`, 20, 174);
+    doc.text(`Total Hold Time: ${hold}`, 20, 182);
+
+    // 5. Add Joint Angles
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(16);
+    doc.text("Joint Angles", 120, 140);
+    
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(12);
+    doc.text(`Left Knee: ${document.getElementById("leftKneeAngle").textContent}`, 120, 150);
+    doc.text(`Right Knee: ${document.getElementById("rightKneeAngle").textContent}`, 120, 158);
+    doc.text(`Left Elbow: ${document.getElementById("leftElbowAngle").textContent}`, 120, 166);
+    doc.text(`Right Elbow: ${document.getElementById("rightElbowAngle").textContent}`, 120, 174);
+    doc.text(`Torso Tilt: ${document.getElementById("torsoTilt").textContent}`, 120, 182);
+
+    // 6. Add Feedback & Tips
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(16);
+    doc.text("Coaching Feedback", 20, 200);
+    
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(12);
+    
+    let yPos = 210;
+    doc.text(`Main Instruction: ${document.getElementById("liveInstructionText").textContent}`, 20, yPos);
+    yPos += 10;
+    
+    const listItems = document.querySelectorAll("#detailsList li");
+    listItems.forEach((li) => {
+        if (yPos > 280) {
+            doc.addPage();
+            yPos = 20;
+        }
+        doc.text(`• ${li.textContent}`, 25, yPos);
+        yPos += 8;
+    });
+
+    // 7. Trigger the download
+    const dateStr = new Date().toISOString().split('T')[0];
+    doc.save(`TreePose_Report_${dateStr}.pdf`);
+}
     </script>
 </body>
 
 </html>
+
+
+
+
+
+
