@@ -1,0 +1,1203 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Goddess Pose Pro Coach</title>
+    <link rel="icon" href="data:,">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+    <style>
+        :root {
+            --bg1: #020617; --bg2: #081120; --bg3: #062c26;
+            --text: #f8fafc; --muted: #94a3b8;
+        }
+
+        * { box-sizing: border-box; }
+
+        html, body {
+            margin: 0; min-height: 100%;
+            background: radial-gradient(circle at top left, rgba(6, 182, 212, 0.10), transparent 26%),
+                        radial-gradient(circle at bottom right, rgba(34, 197, 94, 0.09), transparent 28%),
+                        linear-gradient(135deg, var(--bg1), var(--bg2) 55%, var(--bg3));
+            color: var(--text); font-family: Arial, sans-serif; overflow-x: hidden;
+        }
+
+        .glass {
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.045));
+            border: 1px solid rgba(255, 255, 255, 0.09); backdrop-filter: blur(16px);
+            box-shadow: 0 22px 50px rgba(0, 0, 0, 0.28);
+        }
+
+        .panel-title { font-size: 1.2rem; font-weight: 800; letter-spacing: -0.02em; }
+        .panel-sub { color: var(--muted); font-size: 0.95rem; line-height: 1.45; }
+
+        .stat-card {
+            background: rgba(15, 23, 42, 0.50); border: 1px solid rgba(255, 255, 255, 0.07);
+            border-radius: 1.2rem; padding: 1rem;
+        }
+        .stat-label { font-size: 0.78rem; color: var(--muted); margin-bottom: 0.35rem; }
+        .stat-value { font-size: 1.55rem; font-weight: 800; line-height: 1.05; }
+
+        .camera-shell {
+            position: relative; width: 100%; aspect-ratio: 16 / 9; max-height: 70vh;
+            overflow: hidden; border-radius: 2rem; background: #000;
+            border: 1px solid rgba(255, 255, 255, 0.10); box-shadow: 0 30px 70px rgba(0, 0, 0, 0.38);
+            display: flex; align-items: center; justify-content: center;
+        }
+
+        /* IMPORTANT: Mirror the video and canvas overlays so the user moves naturally */
+        .camera-video, .camera-overlay { transform: scaleX(-1); transform-origin: center; }
+
+        .camera-video, .camera-overlay, .guide-image, .camera-gradient {
+            position: absolute; inset: 0; width: 100%; height: 100%;
+        }
+        .camera-video { object-fit: cover; z-index: 1; background: transparent; }
+        .camera-gradient {
+            z-index: 2; pointer-events: none;
+            background: linear-gradient(180deg, rgba(0,0,0,0.25), transparent 30%, transparent 70%, rgba(0,0,0,0.32)),
+                        radial-gradient(circle at center, transparent 42%, rgba(0,0,0,0.14) 100%);
+        }
+        .guide-image { object-fit: cover; z-index: 3; pointer-events: none; opacity: 0.11; mix-blend-mode: screen; filter: brightness(1.02); }
+        .camera-overlay { z-index: 20; pointer-events: none; }
+
+        .freeze-layer { position: absolute; inset: 0; z-index: 15; display: none; background: #000; }
+        .freeze-layer.show { display: block; }
+        .freeze-layer img { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); display: block; }
+
+        .overlay-badge {
+            position: absolute; top: 16px; right: 16px; z-index: 30;
+            display: inline-flex; align-items: center; gap: 10px;
+            padding: 0.8rem 1rem; border-radius: 999px;
+            background: rgba(15, 23, 42, 0.78); border: 1px solid rgba(255, 255, 255, 0.12);
+            backdrop-filter: blur(10px); font-weight: 800; font-size: 0.96rem;
+            transform: scaleX(-1); /* Un-mirror the text so it reads correctly */
+        }
+        .overlay-score-dot { width: 11px; height: 11px; border-radius: 999px; background: #64748b; box-shadow: 0 0 14px rgba(255, 255, 255, 0.18); }
+
+        .camera-status {
+            position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 30;
+            padding: 0.78rem 1rem; border-radius: 999px;
+            background: rgba(15, 23, 42, 0.76); border: 1px solid rgba(255, 255, 255, 0.10);
+            backdrop-filter: blur(10px); color: #e2e8f0; font-weight: 700; text-align: center; max-width: 86%;
+        }
+
+        .top-float {
+            position: absolute; top: 16px; left: 16px; z-index: 30;
+            display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-start;
+            transform: scaleX(-1); /* Un-mirror the text */
+        }
+        .mini-chip { padding: 0.65rem 0.85rem; border-radius: 999px; background: rgba(15, 23, 42, 0.72); border: 1px solid rgba(255, 255, 255, 0.08); backdrop-filter: blur(10px); font-size: 0.84rem; font-weight: 700; color: #e2e8f0; }
+
+        .control-btn { border: 0; color: white; border-radius: 1rem; padding: 0.9rem 1.1rem; font-weight: 800; cursor: pointer; transition: 0.18s ease; }
+        .control-btn:hover { transform: translateY(-1px); }
+        .control-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        
+        .btn-start { background: #16a34a; }
+        .btn-stop { background: #dc2626; }
+        .btn-resume { background: #8b5cf6; }
+        .btn-guide { background: #0891b2; }
+        .btn-angle { background: #334155; }
+
+        .correction-card { border-radius: 1.6rem; padding: 1.25rem; border: 1px solid rgba(255, 255, 255, 0.08); transition: all 0.3s ease;}
+        .correction-main { font-size: clamp(1.75rem, 2.2vw, 3rem); line-height: 1.02; font-weight: 900; letter-spacing: -0.04em; }
+        .correction-sub { font-size: clamp(1.05rem, 1.3vw, 1.45rem); font-weight: 800; line-height: 1.25; }
+
+        .tip-list { margin: 0; padding-left: 1.15rem; display: flex; flex-direction: column; gap: 0.75rem; color: #e2e8f0; line-height: 1.5; }
+        .tip-list li::marker { color: #34d399; }
+
+        .quality-wrap { display: flex; flex-direction: column; gap: 0.7rem; }
+        .quality-bar { height: 14px; border-radius: 999px; background: rgba(255, 255, 255, 0.07); overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.06); }
+        .quality-fill { width: 0%; height: 100%; border-radius: 999px; transition: width 0.22s ease, background 0.22s ease; background: #64748b; box-shadow: 0 0 20px rgba(255, 255, 255, 0.10); }
+
+        .guide-panel {
+            position: fixed; inset: 0 0 0 auto; width: min(430px, 92vw); height: 100vh; z-index: 60;
+            transform: translateX(100%); transition: transform 0.28s ease;
+            background: linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(6, 78, 59, 0.96));
+            border-left: 1px solid rgba(255, 255, 255, 0.10); box-shadow: -12px 0 32px rgba(0, 0, 0, 0.35); backdrop-filter: blur(14px);
+        }
+        .guide-panel.open { transform: translateX(0); }
+        
+        .guide-backdrop { position: fixed; inset: 0; z-index: 50; background: rgba(0, 0, 0, 0.45); opacity: 0; pointer-events: none; transition: opacity 0.22s ease; }
+        .guide-backdrop.show { opacity: 1; pointer-events: auto; }
+
+        .perfect-ring { box-shadow: 0 0 0 2px rgba(74, 222, 128, 0.18), 0 0 0 10px rgba(74, 222, 128, 0.10), 0 0 42px rgba(74, 222, 128, 0.34); }
+        
+        .status-good { color: #4ade80; }
+        .status-warn { color: #facc15; }
+        .status-bad { color: #fb7185; }
+        .status-neutral { color: #cbd5e1; }
+
+        .angles-hidden { display: none; }
+        .angles-visible { display: block; }
+        .section-divider { height: 1px; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.10), transparent); }
+
+        .main-grid { display: grid; grid-template-columns: 340px minmax(500px, 1fr) 340px; gap: 1.25rem; align-items: stretch; height: 100%; }
+        @media (min-width: 1600px) { .main-grid { grid-template-columns: 380px minmax(700px, 1fr) 400px; } }
+        @media (max-width: 1250px) { .main-grid { grid-template-columns: 1fr !important; height: auto !important; } .camera-shell { max-height: none; } }
+
+        /* Hidden PDF Report CSS omitted for brevity, it's injected exactly as in the down_dog layout via JS */
+        #pdfReportContainer { position: fixed; left: -99999px; top: 0; width: 1240px; background: #f8faf9; padding: 0; z-index: -1; }
+        .pdf-report { width: 1240px; min-height: 1754px; background: #f7f8f7; color: #111827; font-family: Arial, sans-serif; position: relative; overflow: hidden; }
+        .pdf-wave-top { position: absolute; left: 0; top: 0; width: 100%; height: 170px; background: radial-gradient(circle at 8% 35%, rgba(16, 185, 129, 0.10), transparent 20%), radial-gradient(circle at 92% 28%, rgba(16, 185, 129, 0.10), transparent 16%), linear-gradient(180deg, #fff 0%, #fff 65%, rgba(236, 253, 245, 0.65) 100%); pointer-events: none; }
+        .pdf-wave-top::before { content: ""; position: absolute; left: -40px; top: 34px; width: 740px; height: 130px; border-radius: 0 0 300px 300px; background: rgba(16, 185, 129, 0.10); transform: rotate(-4deg); }
+        .pdf-wave-top::after { content: ""; position: absolute; right: -30px; top: 10px; width: 300px; height: 220px; border-radius: 50%; background: radial-gradient(circle, rgba(16, 185, 129, 0.10), transparent 68%); }
+        .pdf-inner { position: relative; z-index: 2; padding: 28px 28px 24px; }
+        .pdf-header-logo { text-align: center; padding-top: 8px; padding-bottom: 18px; }
+        .pdf-header-logo img { height: 84px; object-fit: contain; }
+        .pdf-head-row { display: flex; justify-content: space-between; align-items: center; gap: 20px; background: #ffffff; border: 1px solid #ececec; border-radius: 18px; padding: 20px 24px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.04); margin-bottom: 18px; }
+        .pdf-title { font-size: 28px; font-weight: 800; color: #111827; margin-bottom: 6px; }
+        .pdf-subtitle { font-size: 16px; color: #4b5563; }
+        .pdf-date-pill { background: #f7f7f7; border: 1px solid #ececec; border-radius: 14px; padding: 14px 18px; font-size: 16px; font-weight: 600; color: #374151; min-width: 300px; text-align: center; }
+        .pdf-grid-top { display: grid; grid-template-columns: 1.05fr 1fr; gap: 18px; margin-bottom: 18px; }
+        .pdf-card { background: #ffffff; border: 1px solid #ececec; border-radius: 20px; box-shadow: 0 8px 22px rgba(0, 0, 0, 0.04); }
+        .pdf-photo-card { padding: 14px; }
+        .pdf-photo-wrap { position: relative; border-radius: 18px; overflow: hidden; background: #e5e7eb; aspect-ratio: 16 / 10; }
+        .pdf-photo-wrap img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .pdf-pose-chip { position: absolute; left: 16px; top: 16px; background: linear-gradient(135deg, #0f766e, #065f46); color: white; padding: 12px 16px; border-radius: 16px; font-size: 15px; font-weight: 700; box-shadow: 0 10px 22px rgba(6, 95, 70, 0.24); }
+        .pdf-pose-chip small { display: block; font-size: 12px; opacity: 0.92; font-weight: 600; margin-bottom: 2px; }
+        .pdf-summary-card { padding: 18px; background: linear-gradient(180deg, #f7fdf8 0%, #f5fbf6 100%); }
+        .pdf-section-title { font-size: 20px; font-weight: 800; color: #111827; margin-bottom: 14px; }
+        .pdf-metric-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 18px; }
+        .pdf-metric-box { background: #ffffff; border: 1px solid #ececec; border-radius: 16px; padding: 16px 10px; text-align: center; min-height: 116px; }
+        .pdf-metric-icon { font-size: 22px; margin-bottom: 8px; }
+        .pdf-metric-label { font-size: 14px; color: #4b5563; margin-bottom: 8px; }
+        .pdf-metric-value { font-size: 18px; font-weight: 800; color: #111827; }
+        .pdf-metric-value.good { color: #16a34a; }
+        .pdf-score-row { margin-top: 8px; }
+        .pdf-score-line { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .pdf-score-label { font-size: 15px; font-weight: 700; color: #1f2937; }
+        .pdf-score-value { font-size: 15px; font-weight: 800; color: #111827; }
+        .pdf-progress { height: 18px; background: #ecf0ec; border-radius: 999px; overflow: hidden; border: 1px solid #e5e7eb; }
+        .pdf-progress-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, #22c55e, #16a34a); width: 0%; }
+        .pdf-better-text { margin-top: 12px; font-size: 15px; color: #374151; }
+        .pdf-better-text b { color: #16a34a; }
+        .pdf-grid-middle { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 18px; }
+        .pdf-joint-card, .pdf-feedback-card { padding: 18px; }
+        .pdf-pill-status { display: inline-block; background: #eaf8ee; color: #15803d; border-radius: 999px; padding: 8px 14px; font-size: 14px; font-weight: 700; }
+        .pdf-joint-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+        .pdf-table { width: 100%; border-collapse: collapse; overflow: hidden; border-radius: 16px; background: #fafafa; margin-top: 10px; }
+        .pdf-table thead { background: #f3f4f6; }
+        .pdf-table th, .pdf-table td { padding: 14px 12px; font-size: 15px; text-align: left; border-bottom: 1px solid #ececec; }
+        .pdf-table th { color: #4b5563; font-weight: 800; font-size: 13px; letter-spacing: 0.03em; }
+        .pdf-dot-status { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; }
+        .pdf-dot-status::before { content: ""; width: 10px; height: 10px; border-radius: 50%; display: inline-block; background: #22c55e; }
+        .pdf-dot-status.warn::before { background: #f59e0b; }
+        .pdf-dot-status.bad::before { background: #ef4444; }
+        .pdf-feedback-stack { display: flex; flex-direction: column; gap: 14px; margin-top: 8px; }
+        .pdf-feedback-box { border-radius: 16px; padding: 16px 18px; }
+        .pdf-feedback-box.pink { background: #fdecef; }
+        .pdf-feedback-box.green { background: #ecf8ef; }
+        .pdf-feedback-box.yellow { background: #fff5df; }
+        .pdf-feedback-title { font-size: 16px; font-weight: 800; margin-bottom: 8px; color: #111827; }
+        .pdf-feedback-text { font-size: 15px; line-height: 1.5; color: #374151; }
+        .pdf-feedback-list { margin: 0; padding-left: 20px; color: #374151; }
+        .pdf-feedback-list li { margin-bottom: 6px; line-height: 1.5; font-size: 15px; }
+        .pdf-verdict { background: linear-gradient(135deg, #0b4637, #0f3c3b, #134e4a); color: white; border-radius: 20px; padding: 24px 28px; display: flex; justify-content: space-between; align-items: center; gap: 24px; box-shadow: 0 16px 30px rgba(0, 0, 0, 0.12); margin-bottom: 18px; }
+        .pdf-verdict-title { font-size: 18px; font-weight: 700; opacity: 0.92; margin-bottom: 8px; }
+        .pdf-verdict-main { font-size: 24px; font-weight: 900; color: #86efac; margin-bottom: 8px; }
+        .pdf-verdict-sub { font-size: 16px; opacity: 0.95; }
+        .pdf-score-circle { width: 150px; height: 150px; border-radius: 50%; border: 12px solid #4ade80; display: flex; align-items: center; justify-content: center; flex-direction: column; background: rgba(255, 255, 255, 0.03); flex-shrink: 0; }
+        .pdf-score-circle .big { font-size: 42px; font-weight: 900; line-height: 1; }
+        .pdf-score-circle .small { font-size: 22px; opacity: 0.95; }
+        .pdf-footer { background: #fdf0f3; border: 1px solid #f5d6de; border-radius: 18px; padding: 18px 20px; display: flex; justify-content: space-between; align-items: center; gap: 20px; }
+        .pdf-footer-left { font-size: 16px; color: #374151; line-height: 1.45; }
+        .pdf-footer-left b { display: block; font-size: 18px; color: #111827; margin-top: 2px; }
+        .pdf-footer-brand img { height: 56px; object-fit: contain; }
+        .pdf-small-note { font-size: 13px; color: #6b7280; margin-top: 8px; }
+    </style>
+</head>
+
+<body>
+    <button id="openGuideBtn" class="fixed top-5 right-5 z-[70] control-btn btn-guide shadow-lg">Guide</button>
+    <div id="guideBackdrop" class="guide-backdrop"></div>
+
+    <aside id="guidePanel" class="guide-panel p-6 flex flex-col">
+        <div class="flex items-start justify-between gap-4 mb-5">
+            <div>
+                <h2 class="text-3xl font-extrabold text-emerald-300">Goddess Pose</h2>
+                <p class="mt-2 text-slate-300 leading-relaxed">
+                    Build a strong lower body and open your hips with this powerful wide stance squat.
+                </p>
+            </div>
+            <button id="closeGuideBtn" class="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/10">✕</button>
+        </div>
+
+        <div class="rounded-3xl overflow-hidden border border-white/10">
+            <img src="{% static 'Poses/Goddess.jpg' %}" alt="Goddess Example" class="w-full h-[230px] object-cover" onerror="this.src='https://via.placeholder.com/400x230?text=Goddess+Pose'">
+        </div>
+
+        <div class="mt-6 space-y-4 text-slate-200 text-lg overflow-auto pr-2">
+            <div class="flex gap-4 items-start">
+                <span class="w-10 h-10 rounded-full bg-emerald-500 flex items-center justify-center font-bold shrink-0">1</span>
+                <p>Step your feet wide apart, turning toes outward at about 45 degrees.</p>
+            </div>
+            <div class="flex gap-4 items-start">
+                <span class="w-10 h-10 rounded-full bg-emerald-500 flex items-center justify-center font-bold shrink-0">2</span>
+                <p>Bend your knees deep into a squat, ensuring they track over your toes.</p>
+            </div>
+            <div class="flex gap-4 items-start">
+                <span class="w-10 h-10 rounded-full bg-emerald-500 flex items-center justify-center font-bold shrink-0">3</span>
+                <p>Keep your chest lifted, torso upright, and core engaged.</p>
+            </div>
+            <div class="flex gap-4 items-start">
+                <span class="w-10 h-10 rounded-full bg-emerald-500 flex items-center justify-center font-bold shrink-0">4</span>
+                <p>Raise your arms to a cactus shape with elbows at 90 degrees.</p>
+            </div>
+        </div>
+    </aside>
+
+    <main class="max-w-[1880px] mx-auto p-5 min-h-screen flex flex-col">
+        <section class="main-grid flex-1">
+            <aside class="glass rounded-[2rem] p-5 flex flex-col gap-4">
+                <div>
+                    <h2 class="panel-title text-emerald-300">Live Result</h2>
+                    <p class="panel-sub mt-1">Confidence, score, hold quality, and premium tracking.</p>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-label">Pose</div>
+                    <div id="poseText" class="stat-value">-</div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-label">Status</div>
+                    <div id="statusText" class="stat-value status-neutral">Waiting</div>
+                </div>
+
+                <div class="quality-wrap stat-card">
+                    <div class="flex items-center justify-between gap-3">
+                        <div class="stat-label !mb-0">Quality Meter</div>
+                        <div id="qualityBadge" class="text-sm font-bold text-slate-300">Waiting</div>
+                    </div>
+                    <div class="quality-bar">
+                        <div id="qualityFill" class="quality-fill"></div>
+                    </div>
+                    <div class="flex justify-between text-xs text-slate-400">
+                        <span>Not Ready</span>
+                        <span>Good</span>
+                        <span>Perfect</span>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="stat-card">
+                        <div class="stat-label">Confidence</div>
+                        <div id="confidenceText" class="stat-value">-</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Score</div>
+                        <div id="scoreText" class="stat-value">-</div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="stat-card">
+                        <div class="stat-label">Live Hold</div>
+                        <div id="holdText" class="stat-value">-</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Best Hold</div>
+                        <div id="bestHoldText" class="stat-value">-</div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="stat-card">
+                        <div class="stat-label">Quality</div>
+                        <div id="qualityText" class="stat-value">-</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Model Output</div>
+                        <div id="modelPoseText" class="stat-value">-</div>
+                    </div>
+                </div>
+
+                <div class="section-divider my-1"></div>
+
+                <div class="stat-card">
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="stat-label !mb-0">Joint Angles</div>
+                        <button id="toggleAnglesBtn" type="button" class="control-btn btn-angle !px-3 !py-2 text-sm">Show Angles</button>
+                    </div>
+                    <div id="anglesSection" class="angles-hidden">
+                        <div class="space-y-3 text-[1rem]">
+                            <div class="flex justify-between"><span class="text-slate-300">Left Knee</span><span id="leftKneeAngle" class="font-bold">-</span></div>
+                            <div class="flex justify-between"><span class="text-slate-300">Right Knee</span><span id="rightKneeAngle" class="font-bold">-</span></div>
+                            <div class="flex justify-between"><span class="text-slate-300">Hip Angle</span><span id="hipAngle" class="font-bold">-</span></div>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+
+            <section class="glass rounded-[2rem] p-5 flex flex-col gap-4">
+                <div class="flex items-center justify-between gap-4 flex-wrap">
+                    <div>
+                        <h2 class="panel-title">Goddess Camera</h2>
+                        <p class="panel-sub mt-1">Premium live camera with pose markers and hold pause.</p>
+                    </div>
+                    <div class="flex gap-3 flex-wrap">
+                        <button id="startBtn" class="control-btn btn-start">Start Camera</button>
+                        <button id="stopBtn" class="control-btn btn-stop">Stop Camera</button>
+                        <button id="resumeBtn" class="control-btn btn-resume hidden">Resume</button>
+                        <button id="downloadReportBtn" class="control-btn bg-blue-500 hidden hover:bg-blue-400">Download Report</button>
+                    </div>
+                </div>
+
+                <div id="cameraFrame" class="camera-shell flex-1">
+                    <video id="video" class="camera-video" autoplay playsinline muted></video>
+
+                    <div id="countdownOverlay" class="absolute inset-0 flex flex-col items-center justify-center z-[40] hidden transition-opacity duration-300">
+                        <div class="bg-emerald-500/80 backdrop-blur-md text-white rounded-full w-36 h-36 flex items-center justify-center text-7xl font-black border-4 border-emerald-300/50 shadow-[0_0_50px_rgba(16,185,129,0.6)]">
+                            <span id="countdownText">10</span>
+                        </div>
+                    </div>
+
+                    <div class="camera-gradient"></div>
+
+                    <div id="freezeLayer" class="freeze-layer">
+                        <img id="freezeFrameImage" alt="Frozen perfect frame">
+                    </div>
+
+                    <div class="camera-overlay">
+                        <div id="overlayBadge" class="overlay-badge">
+                            <span id="overlayScoreDot" class="overlay-score-dot"></span>
+                            <span id="overlayBadgeText">Waiting for camera</span>
+                        </div>
+
+                        <div class="top-float">
+                            <div class="mini-chip">Pose: <span id="miniPose">-</span></div>
+                            <div class="mini-chip">Hold: <span id="miniHold">-</span></div>
+                            <div class="mini-chip">Best: <span id="miniBestHold">-</span></div>
+                        </div>
+                    </div>
+
+                    <canvas id="overlay" class="camera-overlay"></canvas>
+                    <canvas id="captureCanvas" class="hidden"></canvas>
+                    <div id="cameraStatusBanner" class="camera-status">Camera stopped</div>
+                </div>
+
+                <div class="grid grid-cols-4 gap-3 shrink-0">
+                    <div class="stat-card">
+                        <div class="stat-label">Live Status</div>
+                        <div id="liveStatusText" class="stat-value">Waiting</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Live Score</div>
+                        <div id="liveScoreText" class="stat-value">-</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Detected Quality</div>
+                        <div id="rightQualityText" class="stat-value">-</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Frame State</div>
+                        <div id="frameStateText" class="stat-value">Idle</div>
+                    </div>
+                </div>
+            </section>
+
+            <aside class="glass rounded-[2rem] p-5 flex flex-col gap-4">
+                <div>
+                    <h2 class="panel-title text-emerald-300">Live Coaching</h2>
+                    <p class="panel-sub mt-1">The most important correction is emphasized first.</p>
+                </div>
+
+                <div id="mainFeedbackCard" class="correction-card bg-yellow-400/10 border-yellow-300/20">
+                    <div class="text-slate-300 text-sm mb-2">Main Feedback</div>
+                    <div id="liveInstructionText" class="correction-main">Waiting for pose</div>
+                </div>
+
+                <div id="guidanceCard" class="correction-card bg-emerald-400/10 border-emerald-300/20">
+                    <div class="text-slate-300 text-sm mb-2">Guidance</div>
+                    <div id="guidanceHeadline" class="correction-sub">Start the camera and take a wide stance.</div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-label mb-3">Coaching Summary</div>
+                    <div class="grid grid-cols-2 gap-3 text-sm">
+                        <div class="rounded-2xl bg-slate-900/45 border border-white/5 p-3">
+                            <div class="text-slate-400 mb-1">Confidence</div>
+                            <div id="summaryConfidence" class="font-extrabold text-lg">-</div>
+                        </div>
+                        <div class="rounded-2xl bg-slate-900/45 border border-white/5 p-3">
+                            <div class="text-slate-400 mb-1">Hold</div>
+                            <div id="summaryHold" class="font-extrabold text-lg">-</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="stat-card flex-1 overflow-auto">
+                    <div class="stat-label mb-3">Detailed Tips</div>
+                    <ul id="detailsList" class="tip-list">
+                        <li>No tips yet</li>
+                    </ul>
+                </div>
+            </aside>
+        </section>
+    </main>
+
+    <div id="pdfReportContainer"></div>
+
+    <script>
+        const synth = window.speechSynthesis;
+        let lastSpokenText = "";
+        let lastSpokenTime = 0;
+        const SPEECH_COOLDOWN_MS = 30000;
+        let currentSpeechPriority = 0;
+        window.activeUtterance = null;
+
+        const video = document.getElementById("video");
+        const overlay = document.getElementById("overlay");
+        const overlayCtx = overlay.getContext("2d");
+        const captureCanvas = document.getElementById("captureCanvas");
+        const cameraFrame = document.getElementById("cameraFrame");
+        const freezeLayer = document.getElementById("freezeLayer");
+        const freezeFrameImage = document.getElementById("freezeFrameImage");
+        const countdownOverlay = document.getElementById("countdownOverlay");
+        const countdownText = document.getElementById("countdownText");
+
+        const openGuideBtn = document.getElementById("openGuideBtn");
+        const closeGuideBtn = document.getElementById("closeGuideBtn");
+        const guidePanel = document.getElementById("guidePanel");
+        const guideBackdrop = document.getElementById("guideBackdrop");
+        const toggleAnglesBtn = document.getElementById("toggleAnglesBtn");
+        const anglesSection = document.getElementById("anglesSection");
+        const startBtn = document.getElementById("startBtn");
+        const stopBtn = document.getElementById("stopBtn");
+        const resumeBtn = document.getElementById("resumeBtn");
+        const downloadReportBtn = document.getElementById("downloadReportBtn");
+
+        let stream = null;
+        let requestInFlight = false;
+        let predictIntervalId = null;
+        let animationId = null;
+        let isFrozen = false;
+        let isStarting = false;
+        let lastPayload = null;
+        let lastGoodPayload = null;
+
+        let perfectHoldFrames = 0;
+        let lostFrameCount = 0;
+        let anglesVisible = false;
+        let spokenNumbers = new Set();
+
+        const TARGET_HOLD_SECONDS = 10;
+        const INTRO_DURATION_SECONDS = 3.0;
+        const PREDICT_EVERY_MS = 200; 
+        const JPEG_QUALITY = 0.86;
+        const MAX_LOST_FRAMES = 12;
+
+        const DISPLAY_POINT_STATE = new Map();
+        const REPORT_LOGO = "{% static 'images/sattvalife-logo.png' %}";
+        const REPORT_FALLBACK_LOGO = "{% static 'logo.png' %}";
+
+        function byId(id) { return document.getElementById(id); }
+        function setText(id, value) { const el = byId(id); if (el) el.textContent = value; }
+        function setHTML(id, value) { const el = byId(id); if (el) el.innerHTML = value; }
+
+        function setStatusClass(el, status) {
+            if (!el) return;
+            el.classList.remove("status-good", "status-warn", "status-bad", "status-neutral");
+            const s = String(status || "").toLowerCase();
+            if (s.includes("perfect") || s.includes("good")) el.classList.add("status-good");
+            else if (s.includes("warning")) el.classList.add("status-warn");
+            else if (s.includes("bad")) el.classList.add("status-bad");
+            else el.classList.add("status-neutral");
+        }
+
+        openGuideBtn.addEventListener("click", () => { guidePanel.classList.add("open"); guideBackdrop.classList.add("show"); });
+        closeGuideBtn.addEventListener("click", () => { guidePanel.classList.remove("open"); guideBackdrop.classList.remove("show"); });
+        guideBackdrop.addEventListener("click", () => { guidePanel.classList.remove("open"); guideBackdrop.classList.remove("show"); });
+        
+        toggleAnglesBtn.addEventListener("click", () => {
+            anglesVisible = !anglesVisible;
+            anglesSection.className = anglesVisible ? "angles-visible" : "angles-hidden";
+            toggleAnglesBtn.textContent = anglesVisible ? "Hide Angles" : "Show Angles";
+            if (lastPayload && !isFrozen) drawOverlay(lastPayload);
+        });
+
+        function setCameraBanner(text) { document.getElementById("cameraStatusBanner").textContent = text; }
+
+        function setButtonsState() {
+            startBtn.disabled = !!stream || isStarting;
+            stopBtn.disabled = !stream;
+            resumeBtn.classList.toggle("hidden", !isFrozen);
+            downloadReportBtn.classList.toggle("hidden", !isFrozen);
+        }
+
+        function resizeOverlay() {
+            const rect = overlay.getBoundingClientRect();
+            const dpr = window.devicePixelRatio || 1;
+            overlay.width = Math.max(1, Math.round(rect.width * dpr));
+            overlay.height = Math.max(1, Math.round(rect.height * dpr));
+            overlay.style.width = `${rect.width}px`;
+            overlay.style.height = `${rect.height}px`;
+            overlayCtx.setTransform(1, 0, 0, 1, 0, 0);
+            overlayCtx.scale(dpr, dpr);
+        }
+
+        function clearOverlay() {
+            const rect = overlay.getBoundingClientRect();
+            overlayCtx.clearRect(0, 0, rect.width, rect.height);
+        }
+
+        function getDisplayParams() {
+            const rect = overlay.getBoundingClientRect();
+            if (!video.videoWidth) return { scale: 1, offsetX: 0, offsetY: 0, drawW: rect.width, drawH: rect.height };
+
+            const scale = Math.max(rect.width / video.videoWidth, rect.height / video.videoHeight);
+            const drawW = video.videoWidth * scale;
+            const drawH = video.videoHeight * scale;
+            const offsetX = (rect.width - drawW) / 2;
+            const offsetY = (rect.height - drawH) / 2;
+
+            return { scale, offsetX, offsetY, drawW, drawH, containerW: rect.width };
+        }
+
+        function mapVideoPointToCanvas(xNorm, yNorm) {
+            const { offsetX, offsetY, drawW, drawH, containerW } = getDisplayParams();
+            let x = (Number(xNorm || 0) * drawW) + offsetX;
+            let y = (Number(yNorm || 0) * drawH) + offsetY;
+            
+            // Mirror logic applied precisely here so overlays map perfectly to the mirrored video feed
+            x = containerW - x; 
+            
+            return { x, y };
+        }
+
+        function drawPoint(x, y, radius = 6, color = "#cfcfcf") {
+            overlayCtx.beginPath();
+            overlayCtx.arc(x, y, radius + 5, 0, Math.PI * 2);
+            overlayCtx.fillStyle = color === "#00ff66" ? "rgba(0,255,102,0.18)" : color === "#ffd60a" ? "rgba(255,214,10,0.20)" : color === "#ff3b30" ? "rgba(255,59,48,0.18)" : "rgba(207,207,207,0.16)";
+            overlayCtx.fill();
+
+            overlayCtx.beginPath();
+            overlayCtx.arc(x, y, radius, 0, Math.PI * 2);
+            overlayCtx.fillStyle = color;
+            overlayCtx.fill();
+
+            overlayCtx.lineWidth = 2;
+            overlayCtx.strokeStyle = "rgba(255,255,255,0.18)";
+            overlayCtx.stroke();
+        }
+
+        function drawAngleLabel(x, y, text, color = "#ffd60a") {
+            overlayCtx.save();
+            overlayCtx.font = "bold 14px Arial";
+            const textW = overlayCtx.measureText(text).width;
+            const boxX = x + 12; const boxY = y - 28;
+
+            overlayCtx.fillStyle = "rgba(0,0,0,0.68)";
+            overlayCtx.beginPath();
+            overlayCtx.roundRect(boxX, boxY, Math.max(44, textW + 16), 24, 8);
+            overlayCtx.fill();
+
+            // Correcting standard rendering by temporarily un-mirroring the text context specifically
+            overlayCtx.translate(boxX + 8 + (textW / 2), boxY + 16);
+            overlayCtx.scale(-1, 1); 
+            overlayCtx.fillStyle = color;
+            overlayCtx.fillText(text, -(textW / 2), 0);
+            overlayCtx.restore();
+        }
+
+        function drawOverlay(data) {
+            clearOverlay();
+            if (!data || !Array.isArray(data.points)) return;
+
+            const pose = String(data.pose || "").toLowerCase();
+            if (pose.includes("unknown") || pose.includes("low light")) return;
+
+            for (const pt of data.points) {
+                if (!pt || pt.visible === false) continue;
+                const mapped = mapVideoPointToCanvas(pt.x, pt.y);
+                drawPoint(mapped.x, mapped.y, pt.radius || 6, pt.color || "#cfcfcf");
+            }
+
+            if (anglesVisible && Array.isArray(data.angle_texts)) {
+                for (const item of data.angle_texts) {
+                    if (!item) continue;
+                    const mapped = mapVideoPointToCanvas(item.x, item.y);
+                    drawAngleLabel(mapped.x, mapped.y, item.text, item.color || "#ffd60a");
+                }
+            }
+        }
+
+        function updateOverlayBadge(pose, score, status) {
+            const badgeText = byId("overlayBadgeText");
+            const badge = byId("overlayBadge");
+            const dot = byId("overlayScoreDot");
+
+            badgeText.textContent = `${pose} (${score})`;
+            const s = String(status || "").toLowerCase();
+            if (s.includes("perfect") || score >= 90) {
+                badge.style.background = "rgba(22,163,74,0.90)"; dot.style.background = "#86efac";
+            } else if (s.includes("good") || score >= 75) {
+                badge.style.background = "rgba(245,158,11,0.88)"; dot.style.background = "#fde68a";
+            } else {
+                badge.style.background = "rgba(220,38,38,0.88)"; dot.style.background = "#fca5a5";
+            }
+        }
+
+        function updateQualityMeter(score, quality, status) {
+            const fill = byId("qualityFill");
+            const badge = byId("qualityBadge");
+            if (!fill || !badge) return;
+
+            const pct = Math.max(0, Math.min(100, Number(score || 0)));
+            fill.style.width = `${pct}%`;
+
+            const s = String(status || "").toLowerCase();
+            if (s.includes("perfect") || pct >= 90) {
+                fill.style.background = "linear-gradient(90deg, #16a34a, #4ade80)";
+                badge.textContent = "Perfect"; badge.style.color = "#86efac";
+            } else if (s.includes("good") || pct >= 75) {
+                fill.style.background = "linear-gradient(90deg, #d97706, #facc15)";
+                badge.textContent = "Good"; badge.style.color = "#fde68a";
+            } else {
+                fill.style.background = "linear-gradient(90deg, #dc2626, #fb7185)";
+                badge.textContent = String(quality || "Needs Work").replaceAll("_", " ");
+                badge.style.color = "#fda4af";
+            }
+        }
+
+        function updateCoachingCard(status) {
+            const mainCard = byId("mainFeedbackCard");
+            const guidanceCard = byId("guidanceCard");
+            const s = String(status || "").toLowerCase();
+
+            mainCard.className = "correction-card";
+            guidanceCard.className = "correction-card";
+
+            if (s.includes("perfect")) {
+                mainCard.classList.add("bg-emerald-400/12", "border-emerald-300/25");
+                guidanceCard.classList.add("bg-emerald-400/10", "border-emerald-300/20");
+            } else if (s.includes("good")) {
+                mainCard.classList.add("bg-yellow-400/10", "border-yellow-300/22");
+                guidanceCard.classList.add("bg-emerald-400/10", "border-emerald-300/20");
+            } else {
+                mainCard.classList.add("bg-rose-400/10", "border-rose-300/20");
+                guidanceCard.classList.add("bg-yellow-400/10", "border-yellow-300/20");
+            }
+        }
+
+        function speakFeedback(text, priority = 0) {
+            if (!synth || !text || text === "-" || text === "Waiting...") return;
+
+            const now = Date.now();
+            if (text === lastSpokenText && priority === 0) {
+                if ((now - lastSpokenTime) < SPEECH_COOLDOWN_MS) return;
+            }
+
+            if (synth.speaking) {
+                if (priority < currentSpeechPriority) return;
+                if (priority !== 2 && currentSpeechPriority !== 2) synth.cancel();
+            }
+
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.rate = 1.0; utterance.pitch = 1.0;
+
+            const preferredVoice = synth.getVoices().find(v => v.name.includes("Female") || v.name.includes("Samantha") || v.name.includes("Google US English"));
+            if (preferredVoice) utterance.voice = preferredVoice;
+
+            utterance.onend = () => { currentSpeechPriority = 0; };
+            window.activeUtterance = utterance;
+            currentSpeechPriority = priority;
+            synth.speak(utterance);
+            
+            lastSpokenText = text;
+            lastSpokenTime = now;
+        }
+
+        async function captureAndPredict() {
+            if (!stream || isFrozen || requestInFlight || !video.videoWidth) return;
+
+            requestInFlight = true;
+            try {
+                captureCanvas.width = video.videoWidth;
+                captureCanvas.height = video.videoHeight;
+                captureCanvas.getContext("2d", { alpha: false }).drawImage(video, 0, 0, captureCanvas.width, captureCanvas.height);
+
+                const blob = await new Promise(resolve => captureCanvas.toBlob(resolve, "image/jpeg", JPEG_QUALITY));
+                if (!blob) return;
+
+                const fd = new FormData();
+                fd.append("image", blob, "frame.jpg");
+
+                const res = await fetch("{% url 'User:predict_goddess_pose' %}", { method: "POST", body: fd });
+                const rawText = await res.text();
+
+                if (!res.ok) {
+                    setText("liveInstructionText", "Server request failed");
+                    setText("guidanceHeadline", `HTTP ${res.status}`);
+                    setText("frameStateText", "Server Error");
+                    return;
+                }
+
+                const data = JSON.parse(rawText);
+                if (data && data.success) {
+                    updateUI(data);
+                } else {
+                    setText("liveInstructionText", data?.error || "Server error");
+                    setText("guidanceHeadline", "Backend request failed");
+                    setText("frameStateText", "Backend Error");
+                }
+            } catch (err) {
+                console.error("captureAndPredict error:", err);
+            } finally {
+                requestInFlight = false;
+            }
+        }
+
+        function startPredictionLoop() {
+            if (predictIntervalId) clearInterval(predictIntervalId);
+            predictIntervalId = setInterval(captureAndPredict, PREDICT_EVERY_MS);
+        }
+
+        function startRenderLoop() {
+            if (animationId) cancelAnimationFrame(animationId);
+            const render = () => {
+                if (!isFrozen) {
+                    if (lastPayload && Array.isArray(lastPayload.points) && lastPayload.points.length > 0) {
+                        drawOverlay(lastPayload);
+                    } else if (lastGoodPayload && lostFrameCount <= MAX_LOST_FRAMES) {
+                        drawOverlay(lastGoodPayload);
+                    }
+                }
+                animationId = requestAnimationFrame(render);
+            };
+            animationId = requestAnimationFrame(render);
+        }
+
+        async function startCamera() {
+            if (stream || isStarting) return;
+            isStarting = true; setButtonsState();
+
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
+                    audio: false
+                });
+
+                video.srcObject = stream;
+                await new Promise(resolve => { video.onloadedmetadata = () => resolve(); });
+                await video.play();
+
+                resizeOverlay();
+                setCameraBanner("Live analysis running");
+                setText("frameStateText", "Live");
+                
+                startRenderLoop();
+                startPredictionLoop();
+            } catch (err) {
+                console.error(err);
+                setCameraBanner("Camera access failed");
+                setText("frameStateText", "Camera Error");
+            } finally {
+                isStarting = false;
+                setButtonsState();
+            }
+        }
+
+        function stopCamera() {
+            if (predictIntervalId) clearInterval(predictIntervalId);
+            if (animationId) cancelAnimationFrame(animationId);
+            if (stream) stream.getTracks().forEach(track => track.stop());
+            if (synth) synth.cancel();
+
+            stream = null; video.srcObject = null;
+            resetUI();
+        }
+
+        function freezeCurrentFrame() {
+            if (!video.videoWidth) return;
+
+            const tempCanvas = document.createElement("canvas");
+            tempCanvas.width = video.videoWidth; tempCanvas.height = video.videoHeight;
+            const tCtx = tempCanvas.getContext("2d");
+            tCtx.drawImage(video, 0, 0, tempCanvas.width, tempCanvas.height);
+
+            freezeFrameImage.src = tempCanvas.toDataURL("image/jpeg", 0.92);
+            freezeLayer.classList.add("show");
+            cameraFrame.classList.add("perfect-ring");
+            isFrozen = true;
+
+            if (predictIntervalId) clearInterval(predictIntervalId);
+            setCameraBanner("Perfect pose paused");
+            setText("frameStateText", "Perfect Hold");
+            setButtonsState();
+        }
+
+        function resumeCamera() {
+            freezeLayer.classList.remove("show");
+            freezeFrameImage.src = "";
+            cameraFrame.classList.remove("perfect-ring");
+            isFrozen = false;
+            perfectHoldFrames = 0; lostFrameCount = 0; spokenNumbers.clear();
+            
+            if (stream) {
+                startPredictionLoop();
+                setCameraBanner("Live analysis running");
+                setText("frameStateText", "Live");
+            }
+            setButtonsState();
+        }
+
+        function resetUI() {
+            lastPayload = null; lastGoodPayload = null; isFrozen = false;
+            perfectHoldFrames = 0; lostFrameCount = 0; currentSpeechPriority = 0; spokenNumbers.clear();
+
+            freezeLayer.classList.remove("show"); freezeFrameImage.src = "";
+            cameraFrame.classList.remove("perfect-ring"); countdownOverlay.classList.add("hidden");
+
+            clearOverlay();
+            setText("poseText", "-"); setText("statusText", "Waiting");
+            setText("confidenceText", "-"); setText("scoreText", "-");
+            setText("holdText", "-"); setText("bestHoldText", "-");
+            setText("qualityText", "-"); setText("modelPoseText", "-");
+            setText("liveStatusText", "Waiting"); setText("liveScoreText", "-");
+            setText("rightQualityText", "-"); setText("frameStateText", stream ? "Ready" : "Stopped");
+
+            setText("liveInstructionText", "Waiting for pose");
+            setText("guidanceHeadline", "Start the camera and step wide.");
+            setText("leftKneeAngle", "-"); setText("rightKneeAngle", "-"); setText("hipAngle", "-");
+            setText("miniPose", "-"); setText("miniHold", "-"); setText("miniBestHold", "-");
+            setText("summaryConfidence", "-"); setText("summaryHold", "-");
+
+            setHTML("detailsList", "<li>No tips yet</li>");
+
+            byId("overlayBadgeText").textContent = "Waiting for camera";
+            byId("overlayBadge").style.background = "rgba(15,23,42,0.75)";
+            byId("overlayScoreDot").style.background = "#64748b";
+
+            updateQualityMeter(0, "Waiting", "neutral");
+            updateCoachingCard("neutral");
+            setStatusClass(byId("statusText"), ""); setStatusClass(byId("liveStatusText"), "");
+            setCameraBanner(stream ? "Camera ready" : "Camera stopped");
+            setButtonsState();
+            if (synth) synth.cancel();
+        }
+
+        function updateUI(data) {
+            lastPayload = data;
+            const pose = data.pose || "-"; const status = data.status || "-";
+            const score = Number(data.score || 0); const confidence = Number(data.confidence || 0);
+            const quality = String(data.quality || "-").replaceAll("_", " ");
+            const feedback = data.feedback || "Adjust posture";
+            const coachText = data.coach_text || feedback || "Follow the guidance";
+            const holdTime = Number(data.hold_time || 0); const bestHoldTime = Number(data.best_hold_time || 0);
+            
+            const isPerfect = Boolean(data.perfect_hold) || score >= 90 || String(status).toLowerCase().includes("perfect");
+            const hasUsablePoints = Array.isArray(data.points) && data.points.length >= 8;
+            const weakConfidence = confidence < 0.45;
+            
+            const isBadFrame = pose === "Unknown" || pose === "Low Light" || weakConfidence || !hasUsablePoints;
+
+            if (!isBadFrame) { lastGoodPayload = data; lostFrameCount = 0; } 
+            else { lostFrameCount += 1; }
+
+            setText("poseText", pose); setText("statusText", status);
+            setText("confidenceText", `${(confidence * 100).toFixed(1)}%`);
+            setText("scoreText", data.score ?? "-");
+            setText("holdText", `${holdTime.toFixed(1)}s`);
+            setText("bestHoldText", `${bestHoldTime.toFixed(1)}s`);
+            setText("qualityText", quality); setText("modelPoseText", data.model_pose || "-");
+            setText("liveStatusText", status); setText("liveScoreText", data.score ?? "-");
+            setText("rightQualityText", quality); setText("frameStateText", isFrozen ? "Paused" : "Live");
+            setText("liveInstructionText", feedback); setText("guidanceHeadline", coachText);
+
+            if (!isPerfect) speakFeedback(feedback, 0);
+
+            setText("leftKneeAngle", data.angles?.left_knee_angle ?? "-");
+            setText("rightKneeAngle", data.angles?.right_knee_angle ?? "-");
+            setText("hipAngle", data.angles?.hip_angle ?? "-");
+            
+            setText("miniPose", pose); setText("miniHold", `${holdTime.toFixed(1)}s`);
+            setText("miniBestHold", `${bestHoldTime.toFixed(1)}s`);
+            setText("summaryConfidence", `${(confidence * 100).toFixed(0)}%`);
+            setText("summaryHold", `${holdTime.toFixed(1)}s`);
+
+            setHTML("detailsList", (data.details || []).map(d => `<li>${String(d).replaceAll("_", " ")}</li>`).join("") || "<li>Good posture</li>");
+
+            setStatusClass(byId("statusText"), status); setStatusClass(byId("liveStatusText"), status);
+            updateOverlayBadge(pose, score, status); updateQualityMeter(score, quality, status);
+            updateCoachingCard(status);
+
+            if (!isBadFrame) drawOverlay(data);
+            else if (lastGoodPayload && lostFrameCount <= MAX_LOST_FRAMES) drawOverlay(lastGoodPayload);
+            else clearOverlay();
+
+            // Perfect hold visual & audio logic
+            if (isPerfect) {
+                if (perfectHoldFrames === 0) {
+                    speakFeedback(`Your pose is correct, hold for ${TARGET_HOLD_SECONDS} seconds.`, 1);
+                    spokenNumbers.clear();
+                }
+                perfectHoldFrames++;
+                countdownOverlay.classList.remove("hidden");
+
+                if (holdTime < INTRO_DURATION_SECONDS) {
+                    countdownText.innerHTML = `<span style="font-size: 2.2rem; line-height: 1;">Get<br>Ready</span>`;
+                } else {
+                    const effectiveHoldTime = holdTime - INTRO_DURATION_SECONDS;
+                    const remaining = Math.max(0, TARGET_HOLD_SECONDS - effectiveHoldTime);
+                    const currentSecond = Math.ceil(remaining);
+                    countdownText.innerHTML = currentSecond;
+
+                    if (currentSecond <= 10 && currentSecond > 0 && !spokenNumbers.has(currentSecond)) {
+                        spokenNumbers.add(currentSecond);
+                        speakFeedback(currentSecond.toString(), 2);
+                    }
+
+                    if (!isFrozen && effectiveHoldTime >= TARGET_HOLD_SECONDS) {
+                        countdownOverlay.classList.add("hidden");
+                        freezeCurrentFrame();
+                        speakFeedback("Great job! You completed the Goddess pose.", 1);
+                    }
+                }
+            } else {
+                if (holdTime === 0) {
+                    if (perfectHoldFrames > 0 && synth) { synth.cancel(); currentSpeechPriority = 0; }
+                    perfectHoldFrames = 0; spokenNumbers.clear();
+                    countdownOverlay.classList.add("hidden");
+                }
+            }
+        }
+
+        /*======================================================================
+           PDF REPORT GENERATION (Copied EXACTLY from your premium Down Dog UI)
+        ========================================================================*/
+        function getOverallVerdict(score) {
+            const s = Number(score || 0);
+            if (s >= 95) return { title: "Excellent Performance!", sub: "You're on the right track. Keep up the amazing work!", quality: "Excellent" };
+            if (s >= 85) return { title: "Very Good Performance!", sub: "Strong posture. A little more refinement will make it even better.", quality: "Very Good" };
+            if (s >= 75) return { title: "Good Performance!", sub: "You are doing well. Focus on the highlighted areas.", quality: "Good" };
+            return { title: "Keep Practicing!", sub: "You're improving. Follow the coaching feedback and try again.", quality: "Needs Improvement" };
+        }
+
+        function formatNiceDateTime() {
+            const now = new Date();
+            const datePart = now.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+            const timePart = now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+            return `${datePart}  •  ${timePart}`;
+        }
+
+        function escapeHtml(text) {
+            return String(text || "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
+        }
+
+        function getJointStatus(angle) {
+            if (angle === null) return { label: "Unknown", className: "bad" };
+            if (angle >= 165 || angle <= 110) return { label: "Perfect", className: "" };
+            if (angle >= 140) return { label: "Good", className: "" };
+            return { label: "Needs Work", className: "warn" };
+        }
+
+        function parseAngleValue(text) {
+            if (!text) return null;
+            const cleaned = String(text).replace(/[^\d.-]/g, "");
+            const num = parseFloat(cleaned);
+            return Number.isFinite(num) ? num : null;
+        }
+
+        function createReportHTML(reportData) {
+            const verdict = getOverallVerdict(reportData.score);
+            const progressWidth = Math.max(0, Math.min(100, Number(reportData.score || 0)));
+            const percentile = Math.max(55, Math.min(99, Math.round(45 + progressWidth * 0.45)));
+
+            const jointRows = reportData.joints.map(joint => `
+                <tr>
+                    <td><strong>${escapeHtml(joint.name)}</strong></td>
+                    <td>${escapeHtml(joint.angleText)}</td>
+                    <td><span class="pdf-dot-status ${joint.status.className}">${escapeHtml(joint.status.label)}</span></td>
+                </tr>
+            `).join("");
+
+            const strengthsHtml = reportData.strengths.map(item => `<li>${escapeHtml(item)}</li>`).join("");
+            const focusHtml = reportData.focusAreas.map(item => `<li>${escapeHtml(item)}</li>`).join("");
+
+            return `
+                <div class="pdf-report">
+                    <div class="pdf-wave-top"></div>
+                    <div class="pdf-inner">
+                        <div class="pdf-header-logo">
+                            <img src="${REPORT_LOGO}" onerror="this.onerror=null;this.src='${REPORT_FALLBACK_LOGO}'">
+                        </div>
+
+                        <div class="pdf-head-row">
+                            <div>
+                                <div class="pdf-title">AI POSTURE ANALYSIS REPORT</div>
+                                <div class="pdf-subtitle">Your Personal Yoga Companion</div>
+                            </div>
+                            <div class="pdf-date-pill">🗓 ${escapeHtml(reportData.dateTime)}</div>
+                        </div>
+
+                        <div class="pdf-grid-top">
+                            <div class="pdf-card pdf-photo-card">
+                                <div class="pdf-photo-wrap">
+                                    <img src="${reportData.image}" alt="Captured Pose">
+                                    <div class="pdf-pose-chip">
+                                        <small>Detected Pose</small>
+                                        ${escapeHtml(reportData.pose)}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="pdf-card pdf-summary-card">
+                                <div class="pdf-section-title">Performance Summary</div>
+                                <div class="pdf-metric-grid">
+                                    <div class="pdf-metric-box">
+                                        <div class="pdf-metric-icon">🛡️</div><div class="pdf-metric-label">Confidence</div>
+                                        <div class="pdf-metric-value">${escapeHtml(reportData.confidence)}</div>
+                                    </div>
+                                    <div class="pdf-metric-box">
+                                        <div class="pdf-metric-icon">⭐</div><div class="pdf-metric-label">Score</div>
+                                        <div class="pdf-metric-value good">${escapeHtml(reportData.score)} / 100</div>
+                                    </div>
+                                    <div class="pdf-metric-box">
+                                        <div class="pdf-metric-icon">🏅</div><div class="pdf-metric-label">Quality</div>
+                                        <div class="pdf-metric-value good">${escapeHtml(verdict.quality)}</div>
+                                    </div>
+                                    <div class="pdf-metric-box">
+                                        <div class="pdf-metric-icon">⏱️</div><div class="pdf-metric-label">Best Hold</div>
+                                        <div class="pdf-metric-value">${escapeHtml(reportData.bestHold)}</div>
+                                    </div>
+                                </div>
+
+                                <div class="pdf-score-row">
+                                    <div class="pdf-score-line">
+                                        <div class="pdf-score-label">Score Breakdown</div>
+                                        <div class="pdf-score-value">${escapeHtml(reportData.score)}/100</div>
+                                    </div>
+                                    <div class="pdf-progress">
+                                        <div class="pdf-progress-fill" style="width:${progressWidth}%"></div>
+                                    </div>
+                                    <div class="pdf-better-text">You're performing better than <b>${percentile}%</b> of users!</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="pdf-grid-middle">
+                            <div class="pdf-card pdf-joint-card">
+                                <div class="pdf-joint-head">
+                                    <div class="pdf-section-title" style="margin-bottom:0;">Joint Angle Analysis</div>
+                                    <div class="pdf-pill-status">${escapeHtml(reportData.alignmentStatus)}</div>
+                                </div>
+                                <table class="pdf-table">
+                                    <thead><tr><th>JOINT</th><th>ANGLE</th><th>STATUS</th></tr></thead>
+                                    <tbody>${jointRows}</tbody>
+                                </table>
+                                <div class="pdf-small-note">Joint analysis is based on the final best frame captured.</div>
+                            </div>
+
+                            <div class="pdf-card pdf-feedback-card">
+                                <div class="pdf-section-title">AI Coaching Feedback</div>
+                                <div class="pdf-feedback-stack">
+                                    <div class="pdf-feedback-box pink">
+                                        <div class="pdf-feedback-title">✋ Main Suggestion</div>
+                                        <div class="pdf-feedback-text">${escapeHtml(reportData.mainFeedback)}</div>
+                                    </div>
+                                    <div class="pdf-feedback-box green">
+                                        <div class="pdf-feedback-title">✳️ What You Did Well</div>
+                                        <ul class="pdf-feedback-list">${strengthsHtml}</ul>
+                                    </div>
+                                    <div class="pdf-feedback-box yellow">
+                                        <div class="pdf-feedback-title">🎯 Focus Areas</div>
+                                        <ul class="pdf-feedback-list">${focusHtml}</ul>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="pdf-verdict">
+                            <div>
+                                <div class="pdf-verdict-title">🏆 Overall Verdict</div>
+                                <div class="pdf-verdict-main">${escapeHtml(verdict.title)}</div>
+                                <div class="pdf-verdict-sub">${escapeHtml(verdict.sub)}</div>
+                            </div>
+                            <div class="pdf-score-circle"><div class="big">${escapeHtml(reportData.score)}</div><div class="small">/100</div></div>
+                        </div>
+
+                        <div class="pdf-footer">
+                            <div class="pdf-footer-left">Every pose you hold is a step toward a stronger, healthier you.<b>Namaste!</b></div>
+                            <div class="pdf-footer-brand"><img src="${REPORT_LOGO}" onerror="this.onerror=null;this.src='${REPORT_FALLBACK_LOGO}'"></div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        async function generatePDFReport() {
+            try {
+                if (!freezeFrameImage.src || !isFrozen) {
+                    alert("Please complete the 10-second hold first to generate a full report."); return;
+                }
+
+                const score = Number((byId("scoreText").textContent || "0").replace(/[^\d.-]/g, "")) || 0;
+                const bestHold = byId("bestHoldText").textContent || "-";
+                
+                const leftKnee = parseAngleValue(byId("leftKneeAngle").textContent);
+                const rightKnee = parseAngleValue(byId("rightKneeAngle").textContent);
+                const hipA = parseAngleValue(byId("hipAngle").textContent);
+
+                const joints = [
+                    { name: "Left Knee", angleText: byId("leftKneeAngle").textContent || "-", status: getJointStatus(leftKnee) },
+                    { name: "Right Knee", angleText: byId("rightKneeAngle").textContent || "-", status: getJointStatus(rightKnee) },
+                    { name: "Hip Angle", angleText: byId("hipAngle").textContent || "-", status: getJointStatus(hipA) }
+                ];
+
+                const details = Array.from(document.querySelectorAll("#detailsList li")).map(li => li.textContent).filter(Boolean);
+                const strengths = ["Good overall pose engagement"];
+                if (score > 85) strengths.push("Excellent stance and alignment");
+                if (parseFloat(bestHold) >= 10) strengths.push("Great muscular endurance");
+
+                const reportData = {
+                    image: freezeFrameImage.src,
+                    pose: byId("poseText").textContent || "Goddess Pose",
+                    confidence: byId("confidenceText").textContent || "-",
+                    score,
+                    bestHold,
+                    qualityText: byId("qualityText").textContent || "-",
+                    mainFeedback: byId("liveInstructionText").textContent || "Maintain your posture.",
+                    coachHeadline: byId("guidanceHeadline").textContent || "Good work.",
+                    dateTime: formatNiceDateTime(),
+                    alignmentStatus: score > 80 ? "Good Alignment" : "Needs Alignment",
+                    joints, strengths, focusAreas: details.slice(0,3)
+                };
+
+                const reportContainer = byId("pdfReportContainer");
+                reportContainer.innerHTML = createReportHTML(reportData);
+
+                const images = Array.from(reportContainer.querySelectorAll("img"));
+                await Promise.all(images.map(img => {
+                    if (img.complete) return Promise.resolve();
+                    return new Promise(res => { img.onload = res; img.onerror = res; });
+                }));
+
+                const canvas = await html2canvas(reportContainer.firstElementChild, { scale: 2, useCORS: true, backgroundColor: "#f7f8f7" });
+                const imgData = canvas.toDataURL("image/png");
+                
+                const pdf = new window.jspdf.jsPDF("p", "mm", "a4");
+                const pdfWidth = 210, margin = 6, usableWidth = pdfWidth - margin * 2;
+                const imgHeight = (canvas.height * usableWidth) / canvas.width;
+
+                pdf.addImage(imgData, "PNG", margin, margin, usableWidth, imgHeight);
+                pdf.save(`Sattvalife_Goddess_Report_${new Date().toISOString().split("T")[0]}.pdf`);
+            } catch (error) {
+                console.error("PDF generation error:", error);
+                alert("Failed to generate report PDF.");
+            }
+        }
+
+        startBtn.addEventListener("click", startCamera);
+        stopBtn.addEventListener("click", stopCamera);
+        resumeBtn.addEventListener("click", resumeCamera);
+        downloadReportBtn.addEventListener("click", generatePDFReport);
+        window.addEventListener("resize", () => { resizeOverlay(); if (lastPayload && !isFrozen) drawOverlay(lastPayload); });
+        resetUI();
+    </script>
+</body>
+</html>

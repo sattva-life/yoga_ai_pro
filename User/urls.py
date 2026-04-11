@@ -10,4 +10,7 @@ urlpatterns = [
 
     path("down-dog-live/", views.down_dog_live_page, name="down_dog_live_page"),
     path("down-dog-live-api/", views.down_dog_live_api, name="down_dog_live_api"),
+
+    path("goddess-live/", views.goddess_live_page, name="goddess_live_page"),
+    path("predict-goddess-pose/", views.predict_goddess_pose, name="predict_goddess_pose"),
 ]
