@@ -5,9 +5,24 @@ from django.http import JsonResponse
 from .utils.tree_utility import process_yoga_pose_request
 from .utils.down_dog_utility import process_down_dog_request
 from .utils.goddess_utility import process_goddess_pose_request # New Import
+from .utils.plank_utility import process_plank_pose_request # New Import
+
+
 
 def HomePage(request):
     return render(request, "User/home_page.html")
+
+
+def plank_live_page(request):
+    return render(request, "User/plank_camera.html")
+
+@csrf_exempt
+def predict_plank_pose(request):
+    if request.method != "POST":
+        return api_error("Only POST method allowed", status=405)
+    if "image" not in request.FILES:
+        return api_error("No image uploaded", status=400)
+    return process_plank_pose_request(request)
 
 
 def camera_page(request):

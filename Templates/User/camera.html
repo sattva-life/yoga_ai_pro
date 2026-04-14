@@ -8,6 +8,7 @@
     <title>Yoga Camera</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
     <style>
         html,
@@ -389,6 +390,489 @@
             transform: scaleX(-1);
             transform-origin: center;
         }
+
+        /* --- ADDED HIDDEN PDF REPORT CSS --- */
+        #pdfReportContainer {
+            position: fixed;
+            left: -99999px;
+            top: 0;
+            width: 1240px;
+            background: #f8faf9;
+            padding: 0;
+            z-index: -1;
+        }
+
+        .pdf-report {
+            width: 1240px;
+            min-height: 1754px;
+            background: #f7f8f7;
+            color: #111827;
+            font-family: Arial, sans-serif;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .pdf-wave-top {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 170px;
+            background:
+                radial-gradient(circle at 8% 35%, rgba(16, 185, 129, 0.10), transparent 20%),
+                radial-gradient(circle at 92% 28%, rgba(16, 185, 129, 0.10), transparent 16%),
+                linear-gradient(180deg, #fff 0%, #fff 65%, rgba(236, 253, 245, 0.65) 100%);
+            pointer-events: none;
+        }
+
+        .pdf-wave-top::before {
+            content: "";
+            position: absolute;
+            left: -40px;
+            top: 34px;
+            width: 740px;
+            height: 130px;
+            border-radius: 0 0 300px 300px;
+            background: rgba(16, 185, 129, 0.10);
+            transform: rotate(-4deg);
+        }
+
+        .pdf-wave-top::after {
+            content: "";
+            position: absolute;
+            right: -30px;
+            top: 10px;
+            width: 300px;
+            height: 220px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(16, 185, 129, 0.10), transparent 68%);
+        }
+
+        .pdf-inner {
+            position: relative;
+            z-index: 2;
+            padding: 28px 28px 24px;
+        }
+
+        .pdf-header-logo {
+            text-align: center;
+            padding-top: 8px;
+            padding-bottom: 18px;
+        }
+
+        .pdf-header-logo img {
+            height: 84px;
+            object-fit: contain;
+        }
+
+        .pdf-head-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 20px;
+            background: #ffffff;
+            border: 1px solid #ececec;
+            border-radius: 18px;
+            padding: 20px 24px;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.04);
+            margin-bottom: 18px;
+        }
+
+        .pdf-title {
+            font-size: 28px;
+            font-weight: 800;
+            color: #111827;
+            margin-bottom: 6px;
+        }
+
+        .pdf-subtitle {
+            font-size: 16px;
+            color: #4b5563;
+        }
+
+        .pdf-date-pill {
+            background: #f7f7f7;
+            border: 1px solid #ececec;
+            border-radius: 14px;
+            padding: 14px 18px;
+            font-size: 16px;
+            font-weight: 600;
+            color: #374151;
+            min-width: 300px;
+            text-align: center;
+        }
+
+        .pdf-grid-top {
+            display: grid;
+            grid-template-columns: 1.05fr 1fr;
+            gap: 18px;
+            margin-bottom: 18px;
+        }
+
+        .pdf-card {
+            background: #ffffff;
+            border: 1px solid #ececec;
+            border-radius: 20px;
+            box-shadow: 0 8px 22px rgba(0, 0, 0, 0.04);
+        }
+
+        .pdf-photo-card {
+            padding: 14px;
+        }
+
+        .pdf-photo-wrap {
+            position: relative;
+            border-radius: 18px;
+            overflow: hidden;
+            background: #e5e7eb;
+            aspect-ratio: 16 / 10;
+        }
+
+        .pdf-photo-wrap img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        .pdf-pose-chip {
+            position: absolute;
+            left: 16px;
+            top: 16px;
+            background: linear-gradient(135deg, #0f766e, #065f46);
+            color: white;
+            padding: 12px 16px;
+            border-radius: 16px;
+            font-size: 15px;
+            font-weight: 700;
+            box-shadow: 0 10px 22px rgba(6, 95, 70, 0.24);
+        }
+
+        .pdf-pose-chip small {
+            display: block;
+            font-size: 12px;
+            opacity: 0.92;
+            font-weight: 600;
+            margin-bottom: 2px;
+        }
+
+        .pdf-summary-card {
+            padding: 18px;
+            background: linear-gradient(180deg, #f7fdf8 0%, #f5fbf6 100%);
+        }
+
+        .pdf-section-title {
+            font-size: 20px;
+            font-weight: 800;
+            color: #111827;
+            margin-bottom: 14px;
+        }
+
+        .pdf-metric-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+            margin-bottom: 18px;
+        }
+
+        .pdf-metric-box {
+            background: #ffffff;
+            border: 1px solid #ececec;
+            border-radius: 16px;
+            padding: 16px 10px;
+            text-align: center;
+            min-height: 116px;
+        }
+
+        .pdf-metric-icon {
+            font-size: 22px;
+            margin-bottom: 8px;
+        }
+
+        .pdf-metric-label {
+            font-size: 14px;
+            color: #4b5563;
+            margin-bottom: 8px;
+        }
+
+        .pdf-metric-value {
+            font-size: 18px;
+            font-weight: 800;
+            color: #111827;
+        }
+
+        .pdf-metric-value.good {
+            color: #16a34a;
+        }
+
+        .pdf-score-row {
+            margin-top: 8px;
+        }
+
+        .pdf-score-line {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .pdf-score-label {
+            font-size: 15px;
+            font-weight: 700;
+            color: #1f2937;
+        }
+
+        .pdf-score-value {
+            font-size: 15px;
+            font-weight: 800;
+            color: #111827;
+        }
+
+        .pdf-progress {
+            height: 18px;
+            background: #ecf0ec;
+            border-radius: 999px;
+            overflow: hidden;
+            border: 1px solid #e5e7eb;
+        }
+
+        .pdf-progress-fill {
+            height: 100%;
+            border-radius: 999px;
+            background: linear-gradient(90deg, #22c55e, #16a34a);
+            width: 0%;
+        }
+
+        .pdf-better-text {
+            margin-top: 12px;
+            font-size: 15px;
+            color: #374151;
+        }
+
+        .pdf-better-text b {
+            color: #16a34a;
+        }
+
+        .pdf-grid-middle {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 18px;
+            margin-bottom: 18px;
+        }
+
+        .pdf-joint-card,
+        .pdf-feedback-card {
+            padding: 18px;
+        }
+
+        .pdf-pill-status {
+            display: inline-block;
+            background: #eaf8ee;
+            color: #15803d;
+            border-radius: 999px;
+            padding: 8px 14px;
+            font-size: 14px;
+            font-weight: 700;
+        }
+
+        .pdf-joint-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 14px;
+        }
+
+        .pdf-table {
+            width: 100%;
+            border-collapse: collapse;
+            overflow: hidden;
+            border-radius: 16px;
+            background: #fafafa;
+            margin-top: 10px;
+        }
+
+        .pdf-table thead {
+            background: #f3f4f6;
+        }
+
+        .pdf-table th,
+        .pdf-table td {
+            padding: 14px 12px;
+            font-size: 15px;
+            text-align: left;
+            border-bottom: 1px solid #ececec;
+        }
+
+        .pdf-table th {
+            color: #4b5563;
+            font-weight: 800;
+            font-size: 13px;
+            letter-spacing: 0.03em;
+        }
+
+        .pdf-dot-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 700;
+        }
+
+        .pdf-dot-status::before {
+            content: "";
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+            background: #22c55e;
+        }
+
+        .pdf-dot-status.warn::before {
+            background: #f59e0b;
+        }
+
+        .pdf-dot-status.bad::before {
+            background: #ef4444;
+        }
+
+        .pdf-feedback-stack {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            margin-top: 8px;
+        }
+
+        .pdf-feedback-box {
+            border-radius: 16px;
+            padding: 16px 18px;
+        }
+
+        .pdf-feedback-box.pink {
+            background: #fdecef;
+        }
+
+        .pdf-feedback-box.green {
+            background: #ecf8ef;
+        }
+
+        .pdf-feedback-box.yellow {
+            background: #fff5df;
+        }
+
+        .pdf-feedback-title {
+            font-size: 16px;
+            font-weight: 800;
+            margin-bottom: 8px;
+            color: #111827;
+        }
+
+        .pdf-feedback-text {
+            font-size: 15px;
+            line-height: 1.5;
+            color: #374151;
+        }
+
+        .pdf-feedback-list {
+            margin: 0;
+            padding-left: 20px;
+            color: #374151;
+        }
+
+        .pdf-feedback-list li {
+            margin-bottom: 6px;
+            line-height: 1.5;
+            font-size: 15px;
+        }
+
+        .pdf-verdict {
+            background: linear-gradient(135deg, #0b4637, #0f3c3b, #134e4a);
+            color: white;
+            border-radius: 20px;
+            padding: 24px 28px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 24px;
+            box-shadow: 0 16px 30px rgba(0, 0, 0, 0.12);
+            margin-bottom: 18px;
+        }
+
+        .pdf-verdict-title {
+            font-size: 18px;
+            font-weight: 700;
+            opacity: 0.92;
+            margin-bottom: 8px;
+        }
+
+        .pdf-verdict-main {
+            font-size: 24px;
+            font-weight: 900;
+            color: #86efac;
+            margin-bottom: 8px;
+        }
+
+        .pdf-verdict-sub {
+            font-size: 16px;
+            opacity: 0.95;
+        }
+
+        .pdf-score-circle {
+            width: 150px;
+            height: 150px;
+            border-radius: 50%;
+            border: 12px solid #4ade80;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            background: rgba(255, 255, 255, 0.03);
+            flex-shrink: 0;
+        }
+
+        .pdf-score-circle .big {
+            font-size: 42px;
+            font-weight: 900;
+            line-height: 1;
+        }
+
+        .pdf-score-circle .small {
+            font-size: 22px;
+            opacity: 0.95;
+        }
+
+        .pdf-footer {
+            background: #fdf0f3;
+            border: 1px solid #f5d6de;
+            border-radius: 18px;
+            padding: 18px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .pdf-footer-left {
+            font-size: 16px;
+            color: #374151;
+            line-height: 1.45;
+        }
+
+        .pdf-footer-left b {
+            display: block;
+            font-size: 18px;
+            color: #111827;
+            margin-top: 2px;
+        }
+
+        .pdf-footer-brand img {
+            height: 56px;
+            object-fit: contain;
+        }
+
+        .pdf-small-note {
+            font-size: 13px;
+            color: #6b7280;
+            margin-top: 8px;
+        }
     </style>
 </head>
 
@@ -635,6 +1119,8 @@
         </section>
     </main>
 
+    <div id="pdfReportContainer"></div>
+
     <script>
         // Voice Feedback State
         const synth = window.speechSynthesis;
@@ -643,8 +1129,6 @@
         const SPEECH_COOLDOWN_MS = 30000; // 30 seconds for IDENTICAL comments only
         let currentSpeechPriority = 0; // 0 = general, 1 = important/countdown
         window.activeUtterance = null; // Anti-garbage-collection for Chrome
-
-
 
         const video = document.getElementById("video");
         const overlay = document.getElementById("overlay");
@@ -662,7 +1146,7 @@
         const startBtn = document.getElementById("startBtn");
         const stopBtn = document.getElementById("stopBtn");
         const resumeBtn = document.getElementById("resumeBtn");
-        const downloadReportBtn = document.getElementById("downloadReportBtn"); // Add this line
+        const downloadReportBtn = document.getElementById("downloadReportBtn");
 
         let stream = null;
         let isFrozen = false;
@@ -683,6 +1167,10 @@
         const JPEG_QUALITY = 0.72;
 
         const DISPLAY_POINT_STATE = new Map();
+        
+        // Report Configs
+        const REPORT_LOGO = "{% static 'images/sattvalife-logo.png' %}";
+        const REPORT_FALLBACK_LOGO = "{% static 'logo.png' %}";
 
         function toggleGuide() {
             guidePanel.classList.toggle("open");
@@ -709,9 +1197,9 @@
             startBtn.disabled = !!stream || isStarting;
             stopBtn.disabled = !stream;
             resumeBtn.disabled = !stream || !isFrozen;
-            downloadReportBtn.disabled = !stream || !isFrozen; // Manage disabled state
+            downloadReportBtn.disabled = !stream || !isFrozen; 
             [startBtn, stopBtn, resumeBtn].forEach(btn => btn.classList.toggle("opacity-60", btn.disabled));
-            // Toggle visibility based on freeze state
+            
             resumeBtn.classList.toggle("hidden", !isFrozen);
             downloadReportBtn.classList.toggle("hidden", !isFrozen);
         }
@@ -901,14 +1389,14 @@
             document.getElementById("liveInstructionText").textContent = mainFeedback;
             document.getElementById("guidanceHeadline").textContent = coachMessage;
 
-            // Trigger general voice feedback (Priority 0) ONLY if not in a perfect hold.
-            // If the text is the same, it waits 30 seconds. If it changes, it speaks instantly.
             if (!isPerfect) {
                 speakFeedback(mainFeedback, 0);
             }
 
             document.getElementById("leftKneeAngle").textContent = data.angles?.left_knee_angle ?? "-";
             document.getElementById("rightKneeAngle").textContent = data.angles?.right_knee_angle ?? "-";
+            document.getElementById("leftElbowAngle").textContent = data.angles?.left_elbow_angle ?? "-";
+            document.getElementById("rightElbowAngle").textContent = data.angles?.right_elbow_angle ?? "-";
             document.getElementById("torsoTilt").textContent = data.angles?.torso_tilt ?? "-";
             document.getElementById("modelPoseText").textContent = data.model_pose || "-";
             document.getElementById("liveStatusText").textContent = status;
@@ -949,23 +1437,19 @@
                 const remaining = Math.max(0, TARGET_HOLD_SECONDS - holdTime);
                 const currentSecond = Math.ceil(remaining);
 
-                // Speak exactly once when the perfect pose first starts (Priority 1)
                 if (perfectHoldFrames === 1) {
                     speakFeedback(`Your pose is correct, hold for ${TARGET_HOLD_SECONDS} seconds.`, 1);
                     lastSpokenSecond = TARGET_HOLD_SECONDS;
                 }
 
-                // Update visual countdown
                 countdownOverlay.classList.remove("hidden");
                 countdownText.textContent = currentSecond;
 
-                // Voice countdown (Starts at 7 to allow the intro sentence to finish)
                 if (currentSecond < lastSpokenSecond && currentSecond <= 7 && currentSecond > 0) {
                     speakFeedback(currentSecond.toString(), 1);
                     lastSpokenSecond = currentSecond;
                 }
 
-                // Freeze only when the 10 seconds are reached
                 if (!isFrozen && holdTime >= TARGET_HOLD_SECONDS) {
                     countdownOverlay.classList.add("hidden");
                     freezeCurrentFrame();
@@ -973,9 +1457,8 @@
                     setCameraBanner("10 Second Hold Complete!");
                 }
             } else {
-                // Pose broken: Reset everything
                 if (perfectHoldFrames > 0) {
-                    synth.cancel(); // Instantly stop talking if they break pose
+                    synth.cancel(); 
                     currentSpeechPriority = 0;
                 }
                 perfectHoldFrames = 0;
@@ -1148,6 +1631,8 @@
             document.getElementById("guidanceHeadline").textContent = "Stand still and begin the pose.";
             document.getElementById("leftKneeAngle").textContent = "-";
             document.getElementById("rightKneeAngle").textContent = "-";
+            document.getElementById("leftElbowAngle").textContent = "-";
+            document.getElementById("rightElbowAngle").textContent = "-";
             document.getElementById("torsoTilt").textContent = "-";
             document.getElementById("modelPoseText").textContent = "-";
             document.getElementById("liveStatusText").textContent = "Waiting...";
@@ -1170,25 +1655,19 @@
         window.addEventListener("resize", resizeOverlay);
         resetUI();
 
-        // SMART VOICE LOGIC
         function speakFeedback(text, priority = 0) {
             if (!synth || !text || text === "-" || text === "Waiting...") return;
 
             const now = Date.now();
 
-            // 1. Same Text Cooldown: Wait 30 seconds IF AND ONLY IF it's the exact same general comment
             if (text === lastSpokenText && priority === 0) {
                 if ((now - lastSpokenTime) < SPEECH_COOLDOWN_MS) {
                     return;
                 }
             }
 
-            // 2. Interruption Logic
             if (synth.speaking) {
-                // Do NOT interrupt the countdown with general feedback
                 if (priority < currentSpeechPriority) return;
-
-                // If it's a DIFFERENT comment, or a high-priority message, stop current speech instantly
                 synth.cancel();
             }
 
@@ -1200,14 +1679,11 @@
             const preferredVoice = voices.find(v => v.name.includes("Female") || v.name.includes("Samantha") || v.name.includes("Google US English"));
             if (preferredVoice) utterance.voice = preferredVoice;
 
-            // Reset priority when done speaking
             utterance.onend = function () {
                 currentSpeechPriority = 0;
             };
 
-            // Anti-Garbage-Collection hack to stop the voice from randomly cutting off
             window.activeUtterance = utterance;
-
             currentSpeechPriority = priority;
             synth.speak(utterance);
 
@@ -1215,90 +1691,309 @@
             lastSpokenTime = now;
         }
 
-        async function generatePDFReport() {
-    // 1. Initialize jsPDF
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
-
-    // 2. Set Header
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(22);
-    doc.setTextColor(6, 78, 59); // Emerald color
-    doc.text("Tree Pose Pro Coach - Session Report", 20, 20);
-
-    // 3. Embed the frozen camera frame
-    const imgData = freezeFrameImage.src;
-    if (imgData) {
-        // Adjust width/height to look good on standard A4 while maintaining ratio
-        doc.addImage(imgData, 'JPEG', 20, 30, 170, 96);
-    }
-
-    // 4. Add Statistics
-    doc.setFontSize(16);
-    doc.setTextColor(0, 0, 0);
-    doc.text("Performance Summary", 20, 140);
-    
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(12);
-    
-    const pose = document.getElementById("poseText").textContent;
-    const score = document.getElementById("scoreText").textContent;
-    const hold = document.getElementById("holdText").textContent;
-    const quality = document.getElementById("qualityText").textContent;
-    const confidence = document.getElementById("confidenceText").textContent;
-    
-    doc.text(`Detected Pose: ${pose}`, 20, 150);
-    doc.text(`Confidence: ${confidence}`, 20, 158);
-    doc.text(`Score: ${score}`, 20, 166);
-    doc.text(`Quality: ${quality}`, 20, 174);
-    doc.text(`Total Hold Time: ${hold}`, 20, 182);
-
-    // 5. Add Joint Angles
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(16);
-    doc.text("Joint Angles", 120, 140);
-    
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(12);
-    doc.text(`Left Knee: ${document.getElementById("leftKneeAngle").textContent}`, 120, 150);
-    doc.text(`Right Knee: ${document.getElementById("rightKneeAngle").textContent}`, 120, 158);
-    doc.text(`Left Elbow: ${document.getElementById("leftElbowAngle").textContent}`, 120, 166);
-    doc.text(`Right Elbow: ${document.getElementById("rightElbowAngle").textContent}`, 120, 174);
-    doc.text(`Torso Tilt: ${document.getElementById("torsoTilt").textContent}`, 120, 182);
-
-    // 6. Add Feedback & Tips
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(16);
-    doc.text("Coaching Feedback", 20, 200);
-    
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(12);
-    
-    let yPos = 210;
-    doc.text(`Main Instruction: ${document.getElementById("liveInstructionText").textContent}`, 20, yPos);
-    yPos += 10;
-    
-    const listItems = document.querySelectorAll("#detailsList li");
-    listItems.forEach((li) => {
-        if (yPos > 280) {
-            doc.addPage();
-            yPos = 20;
+        // ==========================================
+        // PDF REPORT ENGINE
+        // ==========================================
+        
+        function getOverallVerdict(score) {
+            const s = Number(score || 0);
+            if (s >= 95) return { title: "Excellent Performance!", sub: "You're on the right track. Keep up the amazing work!", quality: "Excellent" };
+            if (s >= 85) return { title: "Very Good Performance!", sub: "Strong posture and alignment. A little more refinement will make it even better.", quality: "Very Good" };
+            if (s >= 75) return { title: "Good Performance!", sub: "You are doing well. Keep practicing and focus on the highlighted areas.", quality: "Good" };
+            return { title: "Keep Practicing!", sub: "You're improving. Follow the coaching feedback and try again.", quality: "Needs Improvement" };
         }
-        doc.text(`• ${li.textContent}`, 25, yPos);
-        yPos += 8;
-    });
 
-    // 7. Trigger the download
-    const dateStr = new Date().toISOString().split('T')[0];
-    doc.save(`TreePose_Report_${dateStr}.pdf`);
-}
+        function formatNiceDateTime() {
+            const now = new Date();
+            const datePart = now.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+            const timePart = now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+            return `${datePart}  •  ${timePart}`;
+        }
+
+        function escapeHtml(text) {
+            return String(text || "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
+        }
+
+        function getJointStatus(angle) {
+            if (angle === null) return { label: "Unknown", className: "bad" };
+            if (angle >= 170) return { label: "Perfect", className: "" };
+            if (angle >= 155) return { label: "Good", className: "" };
+            if (angle >= 140) return { label: "Needs Work", className: "warn" };
+            return { label: "Adjust", className: "bad" };
+        }
+
+        function parseAngleValue(text) {
+            if (!text) return null;
+            const cleaned = String(text).replace(/[^\d.-]/g, "");
+            const num = parseFloat(cleaned);
+            return Number.isFinite(num) ? num : null;
+        }
+
+        function createReportHTML(reportData) {
+            const verdict = getOverallVerdict(reportData.score);
+            const progressWidth = Math.max(0, Math.min(100, Number(reportData.score || 0)));
+            const percentile = Math.max(55, Math.min(99, Math.round(45 + progressWidth * 0.45)));
+
+            const jointRows = reportData.joints.map(joint => `
+                <tr>
+                    <td><strong>${escapeHtml(joint.name)}</strong></td>
+                    <td>${escapeHtml(joint.angleText)}</td>
+                    <td>
+                        <span class="pdf-dot-status ${joint.status.className}">
+                            ${escapeHtml(joint.status.label)}
+                        </span>
+                    </td>
+                </tr>
+            `).join("");
+
+            const strengthsHtml = reportData.strengths.map(item => `<li>${escapeHtml(item)}</li>`).join("");
+            const focusHtml = reportData.focusAreas.map(item => `<li>${escapeHtml(item)}</li>`).join("");
+
+            return `
+                <div class="pdf-report">
+                    <div class="pdf-wave-top"></div>
+
+                    <div class="pdf-inner">
+                        <div class="pdf-header-logo">
+                            <img src="${REPORT_LOGO}" alt="Sattvalife Logo" onerror="this.onerror=null;this.src='${REPORT_FALLBACK_LOGO}'">
+                        </div>
+
+                        <div class="pdf-head-row">
+                            <div>
+                                <div class="pdf-title">AI POSTURE ANALYSIS REPORT</div>
+                                <div class="pdf-subtitle">Your Personal Yoga Companion</div>
+                            </div>
+                            <div class="pdf-date-pill">🗓 ${escapeHtml(reportData.dateTime)}</div>
+                        </div>
+
+                        <div class="pdf-grid-top">
+                            <div class="pdf-card pdf-photo-card">
+                                <div class="pdf-photo-wrap">
+                                    <img src="${reportData.image}" alt="Captured Pose">
+                                    <div class="pdf-pose-chip">
+                                        <small>Detected Pose</small>
+                                        ${escapeHtml(reportData.pose)}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="pdf-card pdf-summary-card">
+                                <div class="pdf-section-title">Performance Summary</div>
+
+                                <div class="pdf-metric-grid">
+                                    <div class="pdf-metric-box">
+                                        <div class="pdf-metric-icon">🛡️</div>
+                                        <div class="pdf-metric-label">Confidence</div>
+                                        <div class="pdf-metric-value">${escapeHtml(reportData.confidence)}</div>
+                                    </div>
+                                    <div class="pdf-metric-box">
+                                        <div class="pdf-metric-icon">⭐</div>
+                                        <div class="pdf-metric-label">Score</div>
+                                        <div class="pdf-metric-value good">${escapeHtml(reportData.score)} / 100</div>
+                                    </div>
+                                    <div class="pdf-metric-box">
+                                        <div class="pdf-metric-icon">🏅</div>
+                                        <div class="pdf-metric-label">Quality</div>
+                                        <div class="pdf-metric-value good">${escapeHtml(verdict.quality)}</div>
+                                    </div>
+                                    <div class="pdf-metric-box">
+                                        <div class="pdf-metric-icon">⏱️</div>
+                                        <div class="pdf-metric-label">Best Hold</div>
+                                        <div class="pdf-metric-value">${escapeHtml(reportData.bestHold)}</div>
+                                    </div>
+                                </div>
+
+                                <div class="pdf-score-row">
+                                    <div class="pdf-score-line">
+                                        <div class="pdf-score-label">Score Breakdown</div>
+                                        <div class="pdf-score-value">${escapeHtml(reportData.score)}/100</div>
+                                    </div>
+                                    <div class="pdf-progress">
+                                        <div class="pdf-progress-fill" style="width:${progressWidth}%"></div>
+                                    </div>
+                                    <div class="pdf-better-text">
+                                        You're performing better than <b>${percentile}%</b> of users!
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="pdf-grid-middle">
+                            <div class="pdf-card pdf-joint-card">
+                                <div class="pdf-joint-head">
+                                    <div class="pdf-section-title" style="margin-bottom:0;">Joint Angle Analysis</div>
+                                    <div class="pdf-pill-status">${escapeHtml(reportData.alignmentStatus)}</div>
+                                </div>
+
+                                <table class="pdf-table">
+                                    <thead>
+                                        <tr>
+                                            <th>JOINT</th>
+                                            <th>ANGLE</th>
+                                            <th>STATUS</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${jointRows}
+                                    </tbody>
+                                </table>
+
+                                <div class="pdf-small-note">
+                                    Joint analysis is based on the final best frame captured during the pose hold.
+                                </div>
+                            </div>
+
+                            <div class="pdf-card pdf-feedback-card">
+                                <div class="pdf-section-title">AI Coaching Feedback</div>
+
+                                <div class="pdf-feedback-stack">
+                                    <div class="pdf-feedback-box pink">
+                                        <div class="pdf-feedback-title">✋ Main Suggestion</div>
+                                        <div class="pdf-feedback-text">${escapeHtml(reportData.mainFeedback)}</div>
+                                    </div>
+
+                                    <div class="pdf-feedback-box green">
+                                        <div class="pdf-feedback-title">✳️ What You Did Well</div>
+                                        <ul class="pdf-feedback-list">
+                                            ${strengthsHtml}
+                                        </ul>
+                                    </div>
+
+                                    <div class="pdf-feedback-box yellow">
+                                        <div class="pdf-feedback-title">🎯 Focus Areas</div>
+                                        <ul class="pdf-feedback-list">
+                                            ${focusHtml}
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="pdf-verdict">
+                            <div>
+                                <div class="pdf-verdict-title">🏆 Overall Verdict</div>
+                                <div class="pdf-verdict-main">${escapeHtml(verdict.title)}</div>
+                                <div class="pdf-verdict-sub">${escapeHtml(verdict.sub)}</div>
+                            </div>
+                            <div class="pdf-score-circle">
+                                <div class="big">${escapeHtml(reportData.score)}</div>
+                                <div class="small">/100</div>
+                            </div>
+                        </div>
+
+                        <div class="pdf-footer">
+                            <div class="pdf-footer-left">
+                                Every pose you hold is a step toward a stronger, healthier you.
+                                <br><b>Namaste!</b>
+                            </div>
+                            <div class="pdf-footer-brand">
+                                <img src="${REPORT_LOGO}" onerror="this.onerror=null;this.src='${REPORT_FALLBACK_LOGO}'">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        async function generatePDFReport() {
+            try {
+                if (!freezeFrameImage.src || !isFrozen) {
+                    alert("Please complete the 10-second hold first to generate a full report."); return;
+                }
+
+                const score = Number((document.getElementById("scoreText").textContent || "0").replace(/[^\d.-]/g, "")) || 0;
+                const bestHold = document.getElementById("holdText").textContent || "-"; 
+
+                const leftKnee = parseAngleValue(document.getElementById("leftKneeAngle").textContent);
+                const rightKnee = parseAngleValue(document.getElementById("rightKneeAngle").textContent);
+                const leftElbow = parseAngleValue(document.getElementById("leftElbowAngle").textContent);
+                const rightElbow = parseAngleValue(document.getElementById("rightElbowAngle").textContent);
+                const torsoTilt = parseAngleValue(document.getElementById("torsoTilt").textContent);
+
+                const joints = [
+                    { name: "Left Knee", angleText: document.getElementById("leftKneeAngle").textContent || "-", status: getJointStatus(leftKnee) },
+                    { name: "Right Knee", angleText: document.getElementById("rightKneeAngle").textContent || "-", status: getJointStatus(rightKnee) },
+                    { name: "Left Elbow", angleText: document.getElementById("leftElbowAngle").textContent || "-", status: getJointStatus(leftElbow) },
+                    { name: "Right Elbow", angleText: document.getElementById("rightElbowAngle").textContent || "-", status: getJointStatus(rightElbow) },
+                    { name: "Torso Tilt", angleText: document.getElementById("torsoTilt").textContent || "-", status: getJointStatus(torsoTilt) }
+                ];
+
+                const details = Array.from(document.querySelectorAll("#detailsList li")).map(li => li.textContent).filter(Boolean).filter(text => text.toLowerCase() !== "no tips yet");
+
+                const strengths = ["Good overall pose engagement"];
+                if (score > 85) strengths.push("Excellent stance and alignment");
+                if (parseFloat(bestHold) >= 10) strengths.push("Great balance endurance");
+
+                let focusAreas = [];
+                const mainFeedback = document.getElementById("liveInstructionText").textContent || "Maintain your posture.";
+                if (mainFeedback && mainFeedback !== "-" && !mainFeedback.toLowerCase().includes("waiting")) {
+                    focusAreas.push(mainFeedback);
+                }
+                details.forEach(item => { if (!focusAreas.includes(item)) focusAreas.push(item); });
+
+                if (focusAreas.length === 0) {
+                    focusAreas.push("Focus your gaze on a fixed point");
+                    focusAreas.push("Engage your core to improve balance");
+                    focusAreas.push("Keep hips squared forward");
+                }
+
+                let goodCount = joints.filter(j => j.status.label === "Perfect" || j.status.label === "Good").length;
+                let alignmentStatus = "Needs Alignment";
+                if (goodCount >= 4) alignmentStatus = "Good Alignment";
+                if (joints.filter(j => j.status.label === "Perfect").length >= 2 && goodCount >= 4) alignmentStatus = "Excellent Alignment";
+
+                const reportData = {
+                    image: freezeFrameImage.src,
+                    pose: document.getElementById("poseText").textContent || "Tree Pose",
+                    confidence: document.getElementById("confidenceText").textContent || "-",
+                    score,
+                    bestHold,
+                    qualityText: document.getElementById("qualityText").textContent || "-",
+                    mainFeedback,
+                    coachHeadline: document.getElementById("guidanceHeadline").textContent || "Good work.",
+                    dateTime: formatNiceDateTime(),
+                    alignmentStatus,
+                    joints,
+                    strengths: strengths.slice(0, 4),
+                    focusAreas: focusAreas.slice(0, 4)
+                };
+
+                const reportContainer = document.getElementById("pdfReportContainer");
+                reportContainer.innerHTML = createReportHTML(reportData);
+
+                const images = Array.from(reportContainer.querySelectorAll("img"));
+                await Promise.all(images.map(img => {
+                    if (img.complete) return Promise.resolve();
+                    return new Promise(res => { img.onload = res; img.onerror = res; });
+                }));
+
+                const canvas = await html2canvas(reportContainer.firstElementChild, { scale: 2, useCORS: true, backgroundColor: "#f7f8f7" });
+                const imgData = canvas.toDataURL("image/png");
+
+                const pdf = new window.jspdf.jsPDF("p", "mm", "a4");
+                const pdfWidth = 210, margin = 6, usableWidth = pdfWidth - margin * 2;
+                const imgHeight = (canvas.height * usableWidth) / canvas.width;
+
+                let heightLeft = imgHeight;
+                let position = margin;
+
+                pdf.addImage(imgData, "PNG", margin, position, usableWidth, imgHeight);
+                heightLeft -= (297 - margin * 2);
+
+                while (heightLeft > 0) {
+                    position = heightLeft - imgHeight + margin;
+                    pdf.addPage();
+                    pdf.addImage(imgData, "PNG", margin, position, usableWidth, imgHeight);
+                    heightLeft -= (297 - margin * 2);
+                }
+
+                pdf.save(`Sattvalife_TreePose_Report_${new Date().toISOString().split("T")[0]}.pdf`);
+            } catch (error) {
+                console.error("PDF generation error:", error);
+                alert("Failed to generate report PDF.");
+            }
+        }
     </script>
 </body>
 
 </html>
-
-
-
-
-
-

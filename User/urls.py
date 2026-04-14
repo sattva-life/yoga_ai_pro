@@ -13,4 +13,7 @@ urlpatterns = [
 
     path("goddess-live/", views.goddess_live_page, name="goddess_live_page"),
     path("predict-goddess-pose/", views.predict_goddess_pose, name="predict_goddess_pose"),
+
+    path("plank-live/", views.plank_live_page, name="plank_live_page"),
+    path("predict-plank-pose/", views.predict_plank_pose, name="predict_plank_pose"),
 ]
