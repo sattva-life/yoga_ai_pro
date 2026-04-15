@@ -16,4 +16,7 @@ urlpatterns = [
 
     path("plank-live/", views.plank_live_page, name="plank_live_page"),
     path("predict-plank-pose/", views.predict_plank_pose, name="predict_plank_pose"),
+    
+    path("warrior-live/", views.warrior_live_page, name="warrior_live_page"),
+    path("predict-warrior-pose/", views.predict_warrior_pose, name="predict_warrior_pose"),
 ]
