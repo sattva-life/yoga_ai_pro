@@ -664,6 +664,8 @@ def goddess_build_joint_states(runtime, analysis):
     ]
     smoothed = {key: smooth_runtime_boolean(runtime, key, checks[key]) for key in keys}
 
+
+
     joint_states = {
         "left_knee": {
             "ok": smoothed["left_knee_bent"] and smoothed["left_knee_tracking"],
