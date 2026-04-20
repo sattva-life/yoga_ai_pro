@@ -1,6 +1,5 @@
 from pathlib import Path
 from collections import deque, Counter
-import time
 
 import cv2
 import joblib
@@ -30,6 +29,8 @@ PERFECT_HOLD_COUNT = 0
 
 POINT_HISTORY = {}
 POINT_HISTORY_SIZE = 7
+BOOLEAN_HISTORY = {}
+BOOLEAN_HISTORY_SIZE = 5
 
 
 # =========================================================
@@ -178,6 +179,23 @@ GRAY = "#cfcfcf"
 
 
 # =========================================================
+# TREE THRESHOLDS
+# =========================================================
+TREE_STANDING_LEG_MIN_ANGLE = 154.0
+TREE_KNEE_OPEN_MAX_ANGLE = 154.0
+TREE_KNEE_OPEN_MIN_DISTANCE = 0.18
+TREE_FOOT_LIFT_MIN = 0.16
+TREE_FOOT_OFF_KNEE_MIN = 0.11
+TREE_FOOT_CLOSE_MAX = 0.50
+TREE_TORSO_TILT_MAX = 16.0
+TREE_WRIST_ABOVE_SHOULDER_MARGIN = 0.08
+TREE_HANDS_MAX_WIDTH = 0.42
+TREE_PRAYER_HANDS_MAX_WIDTH = 0.16
+TREE_ELBOW_STRAIGHT_MIN = 146.0
+TREE_ELBOW_SOFT_MIN = 132.0
+
+
+# =========================================================
 # RESPONSE HELPERS
 # =========================================================
 def api_success(**kwargs):
@@ -186,6 +204,24 @@ def api_success(**kwargs):
 
 def api_error(message, status=400):
     return JsonResponse({"success": False, "error": str(message)}, status=status)
+
+
+def reset_tree_runtime_state():
+    global TREE_HOLD_START, BEST_HOLD_TIME, PERFECT_HOLD_COUNT
+
+    POSE_HISTORY.clear()
+    DEFECT_HISTORY.clear()
+    SCORE_HISTORY.clear()
+    FEEDBACK_HISTORY.clear()
+    TORSO_CENTER_HISTORY.clear()
+    SHOULDER_TILT_HISTORY.clear()
+    TORSO_LEAN_HISTORY.clear()
+    clear_point_history()
+    BOOLEAN_HISTORY.clear()
+
+    TREE_HOLD_START = None
+    BEST_HOLD_TIME = 0.0
+    PERFECT_HOLD_COUNT = 0
 
 
 # =========================================================
@@ -241,6 +277,20 @@ def smooth_score(new_score):
 def smooth_feedback(new_feedback):
     FEEDBACK_HISTORY.append(str(new_feedback))
     return Counter(FEEDBACK_HISTORY).most_common(1)[0][0]
+
+
+def smooth_boolean(history, value):
+    history.append(bool(value))
+    true_count = sum(history)
+    if len(history) < 3:
+        return true_count >= 1
+    return true_count >= max(2, len(history) // 2 + 1)
+
+
+def smooth_runtime_boolean(key, value, maxlen=BOOLEAN_HISTORY_SIZE):
+    if key not in BOOLEAN_HISTORY:
+        BOOLEAN_HISTORY[key] = deque(maxlen=maxlen)
+    return smooth_boolean(BOOLEAN_HISTORY[key], value)
 
 
 def smooth_point(key, x, y):
@@ -463,6 +513,7 @@ def create_empty_analysis(msg):
         "score": 0,
         "status": "warning",
         "main_feedback": msg,
+        "coach_text": "Grow tall through the standing leg and build the pose one step at a time.",
         "tips": ["Keep your standing leg completely straight."],
         "standing_side": "none",
         "stand_knee_idx": LEFT_KNEE,
@@ -513,32 +564,32 @@ def analyze_tree_pose(raw_pts):
         bent_hip, bent_knee, bent_ankle = lh, lk, la
 
     foot_lift_height = abs(float(bent_ankle[1] - stand_ankle[1])) / torso_size
-    one_foot_lifted = foot_lift_height > 0.18
+    one_foot_lifted = foot_lift_height >= TREE_FOOT_LIFT_MIN
 
     foot_vs_knee_y = abs(float(bent_ankle[1] - stand_knee[1])) / torso_size
-    not_on_knee_joint = foot_vs_knee_y > 0.14
+    not_on_knee_joint = foot_vs_knee_y >= TREE_FOOT_OFF_KNEE_MIN
 
     foot_to_knee_x = abs(float(bent_ankle[0] - stand_knee[0])) / torso_size
     foot_to_hip_x = abs(float(bent_ankle[0] - stand_hip[0])) / torso_size
-    foot_close_to_leg = min(foot_to_knee_x, foot_to_hip_x) < 0.45
+    foot_close_to_leg = min(foot_to_knee_x, foot_to_hip_x) <= TREE_FOOT_CLOSE_MAX
 
     ankle_to_stand_ankle_y = float(stand_ankle[1] - bent_ankle[1]) / torso_size
     ankle_to_stand_hip_y = float(stand_hip[1] - bent_ankle[1]) / torso_size
 
     foot_zone = "unknown"
-    if ankle_to_stand_ankle_y < 0.14:
+    if ankle_to_stand_ankle_y < 0.12:
         foot_zone = "low"
-    elif 0.14 <= ankle_to_stand_ankle_y <= 0.82:
+    elif 0.12 <= ankle_to_stand_ankle_y <= 0.86:
         foot_zone = "calf"
-    elif 0.02 <= ankle_to_stand_hip_y <= 0.72:
+    elif 0.00 <= ankle_to_stand_hip_y <= 0.76:
         foot_zone = "thigh"
 
     foot_height_ok = foot_zone in ["calf", "thigh"]
 
     knee_open_distance = abs(float(bent_knee[0] - stand_hip[0])) / torso_size
-    knee_open_ok = knee_open_distance > 0.20 and bent_angle < 148
+    knee_open_ok = knee_open_distance >= TREE_KNEE_OPEN_MIN_DISTANCE and bent_angle <= TREE_KNEE_OPEN_MAX_ANGLE
 
-    standing_leg_ok = stand_angle >= 158
+    standing_leg_ok = stand_angle >= TREE_STANDING_LEG_MIN_ANGLE
 
     inferred_valid_leg_position = (
         one_foot_lifted and
@@ -554,20 +605,20 @@ def analyze_tree_pose(raw_pts):
 
     vertical_ref = hip_center + np.array([0.0, -0.30, 0.0], dtype=np.float32)
     torso_tilt = calculate_angle(shoulder_center[:2], hip_center[:2], vertical_ref[:2])
-    torso_ok = torso_tilt <= 14.0
+    torso_ok = torso_tilt <= TREE_TORSO_TILT_MAX
 
     wrist_distance = float(np.linalg.norm(lw[:2] - rw[:2])) / torso_size
     wrist_height_diff = abs(float(lw[1] - rw[1])) / torso_size
 
-    left_wrist_above_left_shoulder = lw[1] < ls[1] - 0.10
-    right_wrist_above_right_shoulder = rw[1] < rs[1] - 0.10
+    left_wrist_above_left_shoulder = lw[1] < ls[1] - TREE_WRIST_ABOVE_SHOULDER_MARGIN
+    right_wrist_above_right_shoulder = rw[1] < rs[1] - TREE_WRIST_ABOVE_SHOULDER_MARGIN
 
-    elbows_straight = left_elbow_angle > 150 and right_elbow_angle > 150
-    elbows_soft_ok = left_elbow_angle > 138 and right_elbow_angle > 138
+    elbows_straight = left_elbow_angle >= TREE_ELBOW_STRAIGHT_MIN and right_elbow_angle >= TREE_ELBOW_STRAIGHT_MIN
+    elbows_soft_ok = left_elbow_angle >= TREE_ELBOW_SOFT_MIN and right_elbow_angle >= TREE_ELBOW_SOFT_MIN
 
     hands_symmetric = wrist_height_diff < 0.10
-    hands_not_too_wide = wrist_distance < 0.35
-    hands_close_for_prayer = wrist_distance < 0.12
+    hands_not_too_wide = wrist_distance <= TREE_HANDS_MAX_WIDTH
+    hands_close_for_prayer = wrist_distance <= TREE_PRAYER_HANDS_MAX_WIDTH
 
     left_wrist_near_midline = abs(float(lw[0] - shoulder_center[0])) / torso_size < 0.22
     right_wrist_near_midline = abs(float(rw[0] - shoulder_center[0])) / torso_size < 0.22
@@ -588,10 +639,14 @@ def analyze_tree_pose(raw_pts):
         right_wrist_above_right_shoulder and
         hands_symmetric and
         hands_not_too_wide and
-        elbows_straight
+        elbows_soft_ok
     )
 
     hands_ready = prayer_hands or hands_up
+    left_elbow_ok = prayer_hands or left_elbow_angle >= TREE_ELBOW_SOFT_MIN
+    right_elbow_ok = prayer_hands or right_elbow_angle >= TREE_ELBOW_SOFT_MIN
+    left_arm_ready = prayer_hands or (left_wrist_above_left_shoulder and left_elbow_ok)
+    right_arm_ready = prayer_hands or (right_wrist_above_right_shoulder and right_elbow_ok)
 
     strict_tree_gate = (
         not is_neutral_standing and
@@ -607,70 +662,83 @@ def analyze_tree_pose(raw_pts):
     status = "warning"
     score = 0
     main_f = "Lift one foot onto the opposite inner leg."
+    coach_f = "Root down through one foot and draw the other foot toward the inner leg."
     tips = ["Stand tall.", "Shift weight to one leg."]
 
     if is_neutral_standing:
         pose_label = "Standing Still"
-        score = 10
-        main_f = "Step 1: Shift weight onto one leg and lift the other foot."
+        score = 12
+        main_f = "Shift your weight onto one leg and start lifting the other foot."
+        coach_f = "Press down through the standing foot so the free foot can float up."
         tips = ["Pick one standing leg.", "Lift the other foot off the floor."]
 
     elif not one_foot_lifted:
-        score = 25
-        main_f = "Step 1: Lift your foot higher off the floor."
+        score = 28
+        main_f = "Lift the free foot higher toward your inner leg."
+        coach_f = "Draw the knee out to the side as the foot rises."
         tips = ["Bring the foot toward the opposite inner leg."]
 
     elif not not_on_knee_joint:
-        score = 42
-        main_f = "Step 2: Move your foot away from the knee joint."
+        score = 46
+        main_f = "Move the lifted foot away from the knee joint."
+        coach_f = "Place it on the inner calf or upper thigh, never directly on the knee."
         tips = ["Place the foot on inner calf or thigh, never on the knee."]
 
     elif not foot_place_ok:
-        score = 55
+        score = 58
         if foot_zone == "low":
-            main_f = "Step 2: Place the foot a little higher on calf or thigh."
+            main_f = "Place the lifted foot a little higher on the inner leg."
+            coach_f = "Set the foot on the calf or upper thigh for a steadier base."
             tips = ["Your foot is lifted correctly. Now set it on calf or thigh."]
         elif not foot_close_to_leg:
-            main_f = "Step 2: Bring the lifted foot closer to the standing leg."
+            main_f = "Bring the lifted foot snugly into the standing leg."
+            coach_f = "Press the foot and inner leg gently into each other for balance."
             tips = ["Press the foot gently into the inner leg."]
         else:
-            main_f = "Step 2: Keep the foot stable on the inner leg."
+            main_f = "Keep the lifted foot steady against the inner leg."
+            coach_f = "Use light pressure through the foot and leg to stop the slide."
             tips = ["Hold the lifted foot steady and avoid sliding."]
 
     elif not knee_open_ok:
-        score = 66
-        main_f = "Step 3: Open the bent knee more to the side."
+        score = 70
+        main_f = "Open the lifted knee more to the side."
+        coach_f = "Rotate from the hip while keeping the torso tall."
         tips = ["Rotate the hip outward.", "Let the knee point sideways."]
 
     elif not standing_leg_ok:
-        score = 76
-        main_f = "Step 4: Straighten the standing leg."
+        score = 79
+        main_f = "Straighten the standing leg and root down through the foot."
+        coach_f = "Lift up through the thigh as you ground evenly through the heel and toes."
         tips = ["Press down through the grounded foot.", "Keep the support leg long and firm."]
 
     elif not torso_ok:
-        score = 84
-        main_f = "Step 5: Stand taller through your spine."
+        score = 86
+        main_f = "Stand taller through your spine."
+        coach_f = "Stack your shoulders over your hips and steady your gaze."
         tips = ["Keep shoulders over hips.", "Look straight ahead."]
 
     elif not hands_ready:
-        score = 75
+        score = 82
         status = "warning"
         pose_label = "Tree Pose"
-        main_f = "Step 6: Bring your hands to prayer or raise them overhead correctly."
+        main_f = "Bring your hands to prayer at the chest or reach them overhead."
+        coach_f = "Once the leg is steady, finish the pose with calm, balanced arms."
         tips = ["Your leg position is good.", "Now correct the hand and arm position."]
 
     elif hands_up and not elbows_straight:
-        score = 78
+        score = 88
         status = "warning"
         pose_label = "Tree Pose"
-        main_f = "Straighten both elbows more when raising your hands overhead."
+        main_f = "Lengthen both elbows as the arms reach upward."
+        coach_f = "Reach through the fingertips without tightening the shoulders."
         tips = ["Reach upward through both arms.", "Keep both elbows long and balanced."]
 
     else:
         score = 100
         status = "perfect"
         pose_label = "Correct Tree"
-        main_f = "Perfect Pose! Hold steady and breathe."
+        main_f = "Beautiful Tree pose. Stay tall and breathe steadily."
+        coach_f = "Keep rooting down through the standing foot and lifting up through the crown."
         tips = ["Excellent posture.", "Focus on one spot.", "Breathe steadily."]
 
     checks = {
@@ -686,6 +754,10 @@ def analyze_tree_pose(raw_pts):
         "hands_up": hands_up,
         "elbows_straight": elbows_straight,
         "elbows_soft_ok": elbows_soft_ok,
+        "left_elbow_ok": left_elbow_ok,
+        "right_elbow_ok": right_elbow_ok,
+        "left_arm_ready": left_arm_ready,
+        "right_arm_ready": right_arm_ready,
         "hands_symmetric": hands_symmetric,
         "hands_not_too_wide": hands_not_too_wide,
         "torso": torso_ok,
@@ -699,6 +771,7 @@ def analyze_tree_pose(raw_pts):
         "score": score,
         "status": status,
         "main_feedback": main_f,
+        "coach_text": coach_f,
         "tips": tips,
         "standing_side": standing_side,
         "stand_knee_idx": stand_knee_idx,
@@ -733,7 +806,7 @@ def is_tree_like(model_label, model_confidence, analysis):
         checks.get("knee_open") and
         checks.get("torso") and
         checks.get("hands_ready") and
-        checks.get("elbows_straight") and
+        checks.get("elbows_soft_ok") and
         checks.get("one_foot_lifted")
     ):
         return True
@@ -808,36 +881,10 @@ def get_stability_feedback():
 
 
 def update_hold_state(is_tree, defect_label, full_body_visible, low_light):
-    global TREE_HOLD_START, BEST_HOLD_TIME
-
-    valid_tree = (
-        is_tree and
-        defect_label in ["Perfect_Tree", "Bent_Support_Leg", "Low_Hands", "Torso_Lean", "Poor_Balance", "N/A"] and
-        full_body_visible and
-        not low_light
-    )
-
-    if valid_tree:
-        if TREE_HOLD_START is None:
-            TREE_HOLD_START = time.time()
-        hold_time = time.time() - TREE_HOLD_START
-        BEST_HOLD_TIME = max(BEST_HOLD_TIME, hold_time)
-    else:
-        hold_time = 0.0
-        TREE_HOLD_START = None
-
-    return hold_time, BEST_HOLD_TIME
+    return 0.0, 0.0
 
 
 def hold_bonus(hold_time):
-    if hold_time >= 10:
-        return 10
-    if hold_time >= 7:
-        return 7
-    if hold_time >= 5:
-        return 5
-    if hold_time >= 3:
-        return 2
     return 0
 
 
@@ -848,8 +895,7 @@ def choose_quality_label(analysis, defect_label, defect_confidence):
         analysis["score"] >= 90 and
         checks.get("torso") and
         checks.get("strict_tree_gate") and
-        checks.get("hands_ready") and
-        checks.get("elbows_straight")
+        checks.get("hands_ready")
     ):
         return "Perfect_Tree"
 
@@ -859,7 +905,7 @@ def choose_quality_label(analysis, defect_label, defect_confidence):
     if not checks.get("standing_leg"):
         return "Bent_Support_Leg"
 
-    if not checks.get("hands_ready") or not checks.get("elbows_straight"):
+    if not checks.get("hands_ready") or (checks.get("hands_up") and not checks.get("elbows_soft_ok")):
         return "Low_Hands"
 
     if not checks.get("torso"):
@@ -871,12 +917,125 @@ def choose_quality_label(analysis, defect_label, defect_confidence):
 # =========================================================
 # FRONTEND OVERLAY HELPERS
 # =========================================================
-def build_points_for_frontend(raw_pts, landmarks, analysis):
+def build_tree_joint_states(analysis):
     checks = analysis["checks"]
-    stand_knee_idx = analysis.get("stand_knee_idx", LEFT_KNEE)
-    bent_knee_idx = analysis.get("bent_knee_idx", RIGHT_KNEE)
-    stand_ankle_idx = analysis.get("stand_ankle_idx", LEFT_ANKLE)
-    bent_ankle_idx = analysis.get("bent_ankle_idx", RIGHT_ANKLE)
+    angles = analysis["angles"]
+    standing_side = analysis.get("standing_side", "left")
+    lifted_side = "right" if standing_side == "left" else "left"
+
+    keys = [
+        "standing_leg",
+        "foot_place",
+        "no_knee_pressure",
+        "knee_open",
+        "hands_ready",
+        "prayer_hands",
+        "hands_up",
+        "elbows_straight",
+        "elbows_soft_ok",
+        "left_elbow_ok",
+        "right_elbow_ok",
+        "left_arm_ready",
+        "right_arm_ready",
+        "hands_symmetric",
+        "hands_not_too_wide",
+        "torso",
+        "one_foot_lifted",
+        "strict_tree_gate",
+    ]
+    smoothed = {key: smooth_runtime_boolean(key, checks.get(key, False)) for key in keys}
+
+    left_is_standing = standing_side == "left"
+    right_is_standing = standing_side == "right"
+    right_lifted = lifted_side == "right"
+
+    standing_leg_ok = smoothed["standing_leg"]
+    lifted_leg_ok = smoothed["one_foot_lifted"] and smoothed["foot_place"] and smoothed["no_knee_pressure"]
+    hands_ok = smoothed["hands_ready"]
+
+    joint_states = {
+        "standing_side": standing_side,
+        "lifted_side": lifted_side,
+        "standing_leg": {
+            "ok": standing_leg_ok,
+            "side": standing_side,
+            "angle": angles["left_knee_angle"] if left_is_standing else angles["right_knee_angle"],
+            "threshold": TREE_STANDING_LEG_MIN_ANGLE,
+        },
+        "lifted_leg": {
+            "ok": lifted_leg_ok,
+            "side": lifted_side,
+            "angle": angles["right_knee_angle"] if right_lifted else angles["left_knee_angle"],
+            "off_knee": smoothed["no_knee_pressure"],
+            "foot_placed": smoothed["foot_place"],
+        },
+        "torso": {
+            "ok": smoothed["torso"],
+            "angle": angles["torso_tilt"],
+            "threshold": TREE_TORSO_TILT_MAX,
+        },
+        "hands": {
+            "ok": hands_ok,
+            "mode": "prayer" if smoothed["prayer_hands"] else ("overhead" if smoothed["hands_up"] else "transition"),
+        },
+        "left_knee": {
+            "ok": standing_leg_ok if left_is_standing else smoothed["knee_open"],
+            "angle": angles["left_knee_angle"],
+            "role": "standing" if left_is_standing else "lifted",
+        },
+        "right_knee": {
+            "ok": standing_leg_ok if right_is_standing else smoothed["knee_open"],
+            "angle": angles["right_knee_angle"],
+            "role": "standing" if right_is_standing else "lifted",
+        },
+        "left_ankle": {
+            "ok": standing_leg_ok if left_is_standing else lifted_leg_ok,
+            "role": "standing" if left_is_standing else "lifted",
+        },
+        "right_ankle": {
+            "ok": standing_leg_ok if right_is_standing else lifted_leg_ok,
+            "role": "standing" if right_is_standing else "lifted",
+        },
+        "left_hip": {
+            "ok": smoothed["torso"] and (standing_leg_ok if left_is_standing else smoothed["knee_open"]),
+            "role": "standing" if left_is_standing else "lifted",
+        },
+        "right_hip": {
+            "ok": smoothed["torso"] and (standing_leg_ok if right_is_standing else smoothed["knee_open"]),
+            "role": "standing" if right_is_standing else "lifted",
+        },
+        "left_shoulder": {
+            "ok": smoothed["torso"] and hands_ok,
+        },
+        "right_shoulder": {
+            "ok": smoothed["torso"] and hands_ok,
+        },
+        "left_elbow": {
+            "ok": smoothed["left_elbow_ok"],
+            "angle": angles["left_elbow_angle"],
+            "threshold": TREE_ELBOW_SOFT_MIN,
+        },
+        "right_elbow": {
+            "ok": smoothed["right_elbow_ok"],
+            "angle": angles["right_elbow_angle"],
+            "threshold": TREE_ELBOW_SOFT_MIN,
+        },
+        "left_wrist": {
+            "ok": smoothed["left_arm_ready"],
+        },
+        "right_wrist": {
+            "ok": smoothed["right_arm_ready"],
+        },
+        "nose": {
+            "ok": smoothed["torso"],
+        },
+    }
+
+    return joint_states, smoothed
+
+
+def build_points_for_frontend(raw_pts, landmarks, analysis):
+    base_color = GREEN if analysis["score"] >= 86 else YELLOW
 
     points = []
     for idx in SELECTED_POINTS:
@@ -886,28 +1045,12 @@ def build_points_for_frontend(raw_pts, landmarks, analysis):
         if visibility < 0.18:
             continue
 
-        color = GREEN if analysis["score"] >= 86 else YELLOW
-        radius = 6
-
-        if idx == stand_knee_idx and not checks.get("standing_leg"):
-            color = RED
-            radius = 7
-        if idx == bent_knee_idx and not checks.get("knee_open"):
-            color = RED
-            radius = 7
-        if idx == bent_ankle_idx and not checks.get("foot_place"):
-            color = RED
-            radius = 7
-        if idx in [LEFT_WRIST, RIGHT_WRIST] and not checks.get("hands_up") and analysis["score"] >= 70:
-            color = RED
-            radius = 7
-
         points.append({
             "name": POINT_NAME_MAP.get(idx, f"point_{idx}"),
             "x": clip01(raw_pts[idx][0]),
             "y": clip01(raw_pts[idx][1]),
-            "color": color,
-            "radius": radius,
+            "color": base_color,
+            "radius": 6,
             "visible": True,
             "visibility": round(visibility, 3),
         })
@@ -918,13 +1061,13 @@ def build_points_for_frontend(raw_pts, landmarks, analysis):
 def build_angle_texts(raw_pts, landmarks, analysis):
     items = []
     mapping = [
-        (LEFT_KNEE, analysis.get("angles", {}).get("left_knee_angle", 0)),
-        (RIGHT_KNEE, analysis.get("angles", {}).get("right_knee_angle", 0)),
-        (LEFT_ELBOW, analysis.get("angles", {}).get("left_elbow_angle", 0)),
-        (RIGHT_ELBOW, analysis.get("angles", {}).get("right_elbow_angle", 0)),
+        (LEFT_KNEE, analysis.get("angles", {}).get("left_knee_angle", 0), "left_knee"),
+        (RIGHT_KNEE, analysis.get("angles", {}).get("right_knee_angle", 0), "right_knee"),
+        (LEFT_ELBOW, analysis.get("angles", {}).get("left_elbow_angle", 0), "left_elbow"),
+        (RIGHT_ELBOW, analysis.get("angles", {}).get("right_elbow_angle", 0), "right_elbow"),
     ]
 
-    for idx, value in mapping:
+    for idx, value, joint_key in mapping:
         lm = landmarks[idx]
         if float(lm.visibility) < 0.18:
             continue
@@ -934,6 +1077,7 @@ def build_angle_texts(raw_pts, landmarks, analysis):
             "x": clip01(raw_pts[idx][0]),
             "y": clip01(raw_pts[idx][1]),
             "color": YELLOW,
+            "joint_key": joint_key,
         })
 
     return items
@@ -943,9 +1087,12 @@ def build_angle_texts(raw_pts, landmarks, analysis):
 # MAIN PROCESS FUNCTION
 # =========================================================
 def process_yoga_pose_request(request):
-    global PERFECT_HOLD_COUNT
+    global TREE_HOLD_START, PERFECT_HOLD_COUNT
 
     try:
+        if request.POST.get("reset") == "true":
+            reset_tree_runtime_state()
+
         uploaded_file = request.FILES["image"]
         frame = read_uploaded_image(uploaded_file)
 
@@ -956,12 +1103,7 @@ def process_yoga_pose_request(request):
 
         low_light, brightness = check_lighting(frame)
         if low_light:
-            PERFECT_HOLD_COUNT = 0
-            DEFECT_HISTORY.clear()
-            POSE_HISTORY.clear()
-            SCORE_HISTORY.clear()
-            FEEDBACK_HISTORY.clear()
-            clear_point_history()
+            reset_tree_runtime_state()
 
             return api_success(
                 pose="Low Light",
@@ -974,22 +1116,18 @@ def process_yoga_pose_request(request):
                 defect_confidence=0.0,
                 score=0,
                 hold_time=0.0,
-                best_hold_time=round(BEST_HOLD_TIME, 1),
+                best_hold_time=0.0,
                 angles={},
                 details=["Increase room lighting", "Face the light source", "Avoid dark background"],
                 perfect_hold=False,
                 points=[],
                 angle_texts=[],
+                joint_states={},
             )
 
         landmarks = detect_landmarks(frame)
         if not landmarks:
-            PERFECT_HOLD_COUNT = 0
-            DEFECT_HISTORY.clear()
-            POSE_HISTORY.clear()
-            SCORE_HISTORY.clear()
-            FEEDBACK_HISTORY.clear()
-            clear_point_history()
+            reset_tree_runtime_state()
 
             return api_success(
                 pose="Unknown",
@@ -1002,12 +1140,13 @@ def process_yoga_pose_request(request):
                 defect_confidence=0.0,
                 score=0,
                 hold_time=0.0,
-                best_hold_time=round(BEST_HOLD_TIME, 1),
+                best_hold_time=0.0,
                 angles={},
                 details=["Show full body", "Improve room lighting", "Stay centered in frame"],
                 perfect_hold=False,
                 points=[],
                 angle_texts=[],
+                joint_states={},
             )
 
         features_df, _, _ = build_feature_dataframe_from_landmarks(landmarks)
@@ -1018,12 +1157,7 @@ def process_yoga_pose_request(request):
         framing_feedback = check_frame_position(raw_pts)
 
         if not full_body_visible:
-            PERFECT_HOLD_COUNT = 0
-            DEFECT_HISTORY.clear()
-            POSE_HISTORY.clear()
-            SCORE_HISTORY.clear()
-            FEEDBACK_HISTORY.clear()
-            clear_point_history()
+            reset_tree_runtime_state()
 
             details = ["Show full body clearly", "Keep both feet visible", "Stand in the center of the camera"]
             details.extend(framing_feedback)
@@ -1039,18 +1173,20 @@ def process_yoga_pose_request(request):
                 defect_confidence=0.0,
                 score=0,
                 hold_time=0.0,
-                best_hold_time=round(float(BEST_HOLD_TIME), 1),
+                best_hold_time=0.0,
                 angles={},
                 details=dedupe_text_list(details, max_items=3),
                 perfect_hold=False,
                 points=[],
                 angle_texts=[],
+                joint_states={},
             )
 
         predicted_label, confidence = predict_pose_label(features_df)
         stable_predicted_label = smooth_label(POSE_HISTORY, predicted_label)
 
         analysis = analyze_tree_pose(raw_pts)
+        joint_states, _ = build_tree_joint_states(analysis)
         points = build_points_for_frontend(raw_pts, landmarks, analysis)
         angle_texts = build_angle_texts(raw_pts, landmarks, analysis)
 
@@ -1058,6 +1194,7 @@ def process_yoga_pose_request(request):
 
         if not tree_like:
             DEFECT_HISTORY.clear()
+            TREE_HOLD_START = None
             PERFECT_HOLD_COUNT = 0
 
             tips = []
@@ -1074,18 +1211,19 @@ def process_yoga_pose_request(request):
                 model_pose=stable_predicted_label,
                 quality="N/A",
                 feedback=analysis.get("main_feedback", "This is not Tree pose yet."),
-                coach_text=analysis.get("main_feedback", "Lift one foot onto the opposite inner leg to enter Tree pose."),
+                coach_text=analysis.get("coach_text", "Lift one foot onto the opposite inner leg to enter Tree pose."),
                 status="warning",
                 confidence=round(float(confidence), 3),
                 defect_confidence=0.0,
                 score=max(0, min(45, analysis.get("score", 0))),
                 hold_time=0.0,
-                best_hold_time=round(float(BEST_HOLD_TIME), 1),
+                best_hold_time=0.0,
                 angles=analysis.get("angles", {}),
                 details=dedupe_text_list(tips, max_items=3),
                 perfect_hold=False,
                 points=points,
                 angle_texts=angle_texts,
+                joint_states=joint_states,
             )
 
         raw_defect_label, raw_defect_confidence = predict_defect_label(features_df)
@@ -1105,59 +1243,32 @@ def process_yoga_pose_request(request):
         defect_score = calculate_defect_score(defect_label)
         combined_score = int(round((rule_score * 0.82) + (defect_score * 0.18)))
         combined_score = max(0, combined_score - stability_penalty)
-
-        hold_time, best_hold = update_hold_state(
-            is_tree=True,
-            defect_label=defect_label,
-            full_body_visible=full_body_visible,
-            low_light=low_light
-        )
-
-        combined_score = min(100, combined_score + hold_bonus(hold_time))
         stable_score = smooth_score(combined_score)
 
         if stable_score >= 94 and analysis["checks"].get("strict_tree_gate") and defect_label in ["Perfect_Tree", "N/A"]:
             pose_name = "Correct Tree"
             stable_status = "perfect"
-            feedback_text = "Correct Tree pose"
-            coach_text = "Excellent. Hold steady."
+            feedback_text = "Beautiful Tree pose. Stay tall and hold steady."
+            coach_text = analysis.get("coach_text", "Keep breathing and stay steady.")
         elif stable_score >= 80:
             pose_name = "Tree Pose"
             stable_status = "good"
             feedback_text = analysis["main_feedback"]
-            coach_text = "Good pose. Refine one small correction."
+            coach_text = analysis.get("coach_text", "Refine the pose and stay steady.")
         elif stable_score >= 58:
             pose_name = "Tree Needs Correction"
             stable_status = "warning"
             feedback_text = analysis["main_feedback"]
-            coach_text = "You are close. Make one or two corrections."
+            coach_text = analysis.get("coach_text", "Make one calm correction at a time.")
         else:
             pose_name = "Not Ready Yet"
             stable_status = "warning"
             feedback_text = analysis["main_feedback"]
-            coach_text = "Enter Tree pose and hold steady."
+            coach_text = analysis.get("coach_text", "Build the pose from the ground up.")
 
         stable_feedback = smooth_feedback(feedback_text)
 
-        if (
-            stable_score >= 96 and
-            hold_time >= 2.5 and
-            defect_label == "Perfect_Tree" and
-            analysis["checks"].get("strict_tree_gate")
-        ):
-            PERFECT_HOLD_COUNT += 1
-        else:
-            PERFECT_HOLD_COUNT = 0
-
-        if PERFECT_HOLD_COUNT >= 3 and analysis["checks"].get("strict_tree_gate"):
-            pose_name = "Correct Tree"
-            stable_status = "perfect"
-            stable_feedback = "Correct Tree pose"
-            coach_text = "Excellent. Hold steady."
-
         tips = []
-        if hold_time >= 5:
-            tips.append(f"Great hold! {hold_time:.1f}s")
         tips.extend(get_defect_tips(defect_label))
         tips.extend(analysis["tips"])
         tips.extend(stability_tips)
@@ -1179,13 +1290,14 @@ def process_yoga_pose_request(request):
             confidence=round(float(confidence), 3),
             defect_confidence=round(float(defect_confidence), 3),
             score=stable_score,
-            hold_time=round(float(hold_time), 1),
-            best_hold_time=round(float(best_hold), 1),
+            hold_time=0.0,
+            best_hold_time=0.0,
             angles=analysis.get("angles", {}),
             details=cleaned_tips,
-            perfect_hold=PERFECT_HOLD_COUNT >= 3,
+            perfect_hold=False,
             points=points,
             angle_texts=angle_texts,
+            joint_states=joint_states,
         )
 
     except Exception as e:

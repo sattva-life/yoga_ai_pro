@@ -1124,11 +1124,13 @@
     <script>
         // Voice Feedback State
         const synth = window.speechSynthesis;
-        let lastSpokenText = "";
-        let lastSpokenTime = 0;
-        const SPEECH_COOLDOWN_MS = 30000; // 30 seconds for IDENTICAL comments only
-        let currentSpeechPriority = 0; // 0 = general, 1 = important/countdown
-        window.activeUtterance = null; // Anti-garbage-collection for Chrome
+        const SPEECH_COOLDOWN_MS = 30000;
+        const SPEECH_PRIORITY = { NORMAL: 0, HOLD_START: 1, ALERT: 2 };
+        const speechState = {
+            cooldowns: new Map(),
+            currentPriority: 0,
+            activeUtterance: null
+        };
 
         const video = document.getElementById("video");
         const overlay = document.getElementById("overlay");
@@ -1152,19 +1154,33 @@
         let isFrozen = false;
         let isStarting = false;
         let requestInFlight = false;
-        let perfectHoldFrames = 0;
         let lastPayload = null;
         let animationId = null;
-        let predictIntervalId = null;
+        let predictLoopTimerId = null;
+        let predictionStopped = true;
         let anglesVisible = false;
+        let requestController = null;
+        let requestSeq = 0;
+        let forceBackendReset = true;
 
         const MIRROR_PREVIEW = true;
         const TARGET_HOLD_SECONDS = 10;
+        const HOLD_START_SCORE = 94;
+        const HOLD_PAUSE_SCORE = 80;
+        const HOLD_ABORT_SCORE = 70;
         const countdownOverlay = document.getElementById("countdownOverlay");
         const countdownText = document.getElementById("countdownText");
         const PREDICT_EVERY_MS = 260;
-        let lastSpokenSecond = 0;
         const JPEG_QUALITY = 0.72;
+
+        const holdState = {
+            isActive: false,
+            accumulatedMs: 0,
+            lastTickAt: 0,
+            lastCountdownNumber: null,
+            bestHoldMs: 0,
+            completed: false
+        };
 
         const DISPLAY_POINT_STATE = new Map();
         
@@ -1284,6 +1300,96 @@
             DISPLAY_POINT_STATE.clear();
         }
 
+        function getCurrentHoldSeconds() {
+            return holdState.accumulatedMs / 1000;
+        }
+
+        function getBestHoldSeconds() {
+            return holdState.bestHoldMs / 1000;
+        }
+
+        function resetHoldState(clearBest = false) {
+            holdState.isActive = false;
+            holdState.accumulatedMs = 0;
+            holdState.lastTickAt = 0;
+            holdState.lastCountdownNumber = null;
+            holdState.completed = false;
+            if (clearBest) {
+                holdState.bestHoldMs = 0;
+            }
+            countdownOverlay.classList.add("hidden");
+            countdownText.textContent = TARGET_HOLD_SECONDS;
+        }
+
+        function updateHoldReadouts() {
+            const holdText = `${getCurrentHoldSeconds().toFixed(1)}s`;
+            document.getElementById("holdText").textContent = holdText;
+            document.getElementById("rightHoldText").textContent = holdText;
+        }
+
+        function updateLocalHold(data) {
+            const now = performance.now();
+            const score = Number(data?.score || 0);
+            const pose = String(data?.pose || "");
+            const status = String(data?.status || "").toLowerCase();
+            const validTreeFrame = pose.includes("Tree") && !pose.includes("Not");
+            const canAdvance = validTreeFrame && (status.includes("perfect") || score >= HOLD_START_SCORE);
+            const shouldPause = validTreeFrame && score >= HOLD_PAUSE_SCORE && score < HOLD_START_SCORE;
+            const shouldAbort = !validTreeFrame || score < HOLD_ABORT_SCORE || data?.success === false;
+
+            if (holdState.completed) {
+                updateHoldReadouts();
+                return;
+            }
+
+            if (canAdvance) {
+                if (!holdState.isActive) {
+                    holdState.isActive = true;
+                    holdState.lastTickAt = now;
+                    holdState.lastCountdownNumber = null;
+                    speakFeedback(`Your pose is correct, hold for ${TARGET_HOLD_SECONDS} seconds.`, SPEECH_PRIORITY.HOLD_START);
+                } else {
+                    holdState.accumulatedMs += Math.max(0, now - holdState.lastTickAt);
+                    holdState.lastTickAt = now;
+                }
+
+                holdState.bestHoldMs = Math.max(holdState.bestHoldMs, holdState.accumulatedMs);
+
+                const remainingMs = Math.max(0, TARGET_HOLD_SECONDS * 1000 - holdState.accumulatedMs);
+                const currentSecond = Math.max(1, Math.ceil(remainingMs / 1000));
+                countdownOverlay.classList.remove("hidden");
+                countdownText.textContent = currentSecond;
+
+                if (currentSecond !== holdState.lastCountdownNumber && currentSecond <= 7) {
+                    holdState.lastCountdownNumber = currentSecond;
+                    speakFeedback(currentSecond.toString(), SPEECH_PRIORITY.ALERT);
+                } else if (holdState.lastCountdownNumber === null) {
+                    holdState.lastCountdownNumber = TARGET_HOLD_SECONDS;
+                }
+
+                if (!isFrozen && holdState.accumulatedMs >= TARGET_HOLD_SECONDS * 1000) {
+                    holdState.completed = true;
+                    holdState.accumulatedMs = TARGET_HOLD_SECONDS * 1000;
+                    holdState.bestHoldMs = Math.max(holdState.bestHoldMs, holdState.accumulatedMs);
+                    updateHoldReadouts();
+                    countdownOverlay.classList.add("hidden");
+                    freezeCurrentFrame();
+                    speakFeedback("Great job! You completed the Tree pose.", SPEECH_PRIORITY.ALERT);
+                    setCameraBanner("10 Second Hold Complete!");
+                    return;
+                }
+            } else if (shouldPause && holdState.isActive) {
+                holdState.lastTickAt = now;
+                countdownOverlay.classList.remove("hidden");
+            } else if (shouldAbort) {
+                resetHoldState(false);
+            } else {
+                resetHoldState(false);
+            }
+
+            updateHoldReadouts();
+        }
+
         function drawPoint(x, y, radius, color) {
             overlayCtx.beginPath();
             overlayCtx.arc(x, y, radius + 4, 0, Math.PI * 2);
@@ -1299,7 +1405,12 @@
             overlayCtx.fill();
         }
 
-        function drawAngleLabel(x, y, text) {
+        function clearOverlay() {
+            const { width, height } = getCanvasCssSize();
+            overlayCtx.clearRect(0, 0, width, height);
+        }
+
+        function drawAngleLabel(x, y, text, color = "#ffffff") {
             overlayCtx.font = "bold 14px Arial";
             const padX = 8;
             const boxH = 24;
@@ -1313,31 +1424,60 @@
             overlayCtx.roundRect(boxX, boxY, boxW, boxH, 7);
             overlayCtx.fill();
 
-            overlayCtx.fillStyle = "#ffffff";
+            overlayCtx.fillStyle = color;
             overlayCtx.fillText(text, boxX + padX, boxY + 16);
         }
 
+        function getPointVisual(pt, data) {
+            const score = Number(data?.score || 0);
+            const name = String(pt?.name || "");
+            const jointState = data?.joint_states?.[name];
+            let color = score >= HOLD_START_SCORE ? "#00ff66" : "#ffd60a";
+            let radius = pt?.radius || 6;
+
+            if (jointState && jointState.ok === false) {
+                color = "#ff3b30";
+                radius = Math.max(radius, 7);
+            } else if ((name.includes("shoulder") || name === "nose") && data?.joint_states?.torso?.ok === false) {
+                color = "#ff3b30";
+                radius = Math.max(radius, 7);
+            } else if ((name.includes("wrist") || name.includes("elbow") || name.includes("shoulder")) && data?.joint_states?.hands?.ok === false) {
+                color = "#ff3b30";
+                radius = Math.max(radius, 7);
+            }
+
+            return { color, radius };
+        }
+
+        function getAngleLabelColor(item, data) {
+            const jointKey = item?.joint_key;
+            if (jointKey && data?.joint_states?.[jointKey]?.ok === false) {
+                return "#ffb4b0";
+            }
+            return "#ffffff";
+        }
+
         function drawOverlay(data) {
-            const { width, height } = getCanvasCssSize();
-            overlayCtx.clearRect(0, 0, width, height);
+            clearOverlay();
 
             if (!data || !Array.isArray(data.points) || data.points.length === 0) return;
 
             const pose = String(data.pose || "").toLowerCase();
-            if (pose.includes("unknown") || pose.includes("body not visible")) return;
+            if (pose.includes("unknown") || pose.includes("body not visible") || pose.includes("low light")) return;
 
             for (const pt of data.points) {
                 if (!pt.visible) continue;
 
                 const mapped = mapVideoPointToCanvas(pt.x, pt.y);
                 const smoothed = smoothDisplayPoint(pt.name || `${pt.x}-${pt.y}`, mapped.x, mapped.y);
-                drawPoint(smoothed.x, smoothed.y, pt.radius || 6, pt.color || "#cfcfcf");
+                const visual = getPointVisual(pt, data);
+                drawPoint(smoothed.x, smoothed.y, visual.radius, visual.color);
             }
 
             if (anglesVisible && Array.isArray(data.angle_texts)) {
                 for (const item of data.angle_texts) {
                     const mapped = mapVideoPointToCanvas(item.x, item.y);
-                    drawAngleLabel(mapped.x, mapped.y, item.text);
+                    drawAngleLabel(mapped.x, mapped.y, item.text, getAngleLabelColor(item, data));
                 }
             }
         }
@@ -1374,14 +1514,13 @@
             const score = Number(data.score || 0);
             const status = data.status || "-";
             const pose = data.pose || "-";
-            const isPerfect = score >= 94 || String(status).toLowerCase().includes("perfect");
+            const isPerfect = score >= HOLD_START_SCORE || String(status).toLowerCase().includes("perfect");
 
             document.getElementById("poseText").textContent = pose;
             document.getElementById("statusText").textContent = status;
             document.getElementById("confidenceText").textContent = `${((data.confidence || 0) * 100).toFixed(1)}%`;
             document.getElementById("scoreText").textContent = data.score ?? "-";
             document.getElementById("qualityText").textContent = (data.quality || "-").replaceAll("_", " ");
-            document.getElementById("holdText").textContent = `${Number(data.hold_time || 0).toFixed(1)}s`;
 
             const mainFeedback = data.feedback || "Adjust posture";
             const coachMessage = data.coach_text || mainFeedback || "Follow the guide";
@@ -1389,8 +1528,8 @@
             document.getElementById("liveInstructionText").textContent = mainFeedback;
             document.getElementById("guidanceHeadline").textContent = coachMessage;
 
-            if (!isPerfect) {
-                speakFeedback(mainFeedback, 0);
+            if (!isPerfect && !holdState.isActive && !holdState.completed) {
+                speakFeedback(mainFeedback, SPEECH_PRIORITY.NORMAL);
             }
 
             document.getElementById("leftKneeAngle").textContent = data.angles?.left_knee_angle ?? "-";
@@ -1402,7 +1541,7 @@
             document.getElementById("liveStatusText").textContent = status;
             document.getElementById("liveScoreText").textContent = data.score ?? "-";
             document.getElementById("rightQualityText").textContent = (data.quality || "-").replaceAll("_", " ");
-            document.getElementById("rightHoldText").textContent = `${Number(data.hold_time || 0).toFixed(1)}s`;
+            updateLocalHold(data);
 
             const detailsList = document.getElementById("detailsList");
             detailsList.innerHTML =
@@ -1428,43 +1567,6 @@
 
             autoScaleOutlineFromPoints(data.points || []);
             drawOverlay(data);
-
-            const holdTime = Number(data.hold_time || 0);
-
-            if (isPerfect) {
-                perfectHoldFrames++;
-
-                const remaining = Math.max(0, TARGET_HOLD_SECONDS - holdTime);
-                const currentSecond = Math.ceil(remaining);
-
-                if (perfectHoldFrames === 1) {
-                    speakFeedback(`Your pose is correct, hold for ${TARGET_HOLD_SECONDS} seconds.`, 1);
-                    lastSpokenSecond = TARGET_HOLD_SECONDS;
-                }
-
-                countdownOverlay.classList.remove("hidden");
-                countdownText.textContent = currentSecond;
-
-                if (currentSecond < lastSpokenSecond && currentSecond <= 7 && currentSecond > 0) {
-                    speakFeedback(currentSecond.toString(), 1);
-                    lastSpokenSecond = currentSecond;
-                }
-
-                if (!isFrozen && holdTime >= TARGET_HOLD_SECONDS) {
-                    countdownOverlay.classList.add("hidden");
-                    freezeCurrentFrame();
-                    speakFeedback("Great job! You completed the pose.", 1);
-                    setCameraBanner("10 Second Hold Complete!");
-                }
-            } else {
-                if (perfectHoldFrames > 0) {
-                    synth.cancel(); 
-                    currentSpeechPriority = 0;
-                }
-                perfectHoldFrames = 0;
-                lastSpokenSecond = 0;
-                countdownOverlay.classList.add("hidden");
-            }
         }
 
         function freezeCurrentFrame() {
@@ -1480,8 +1582,8 @@
             freezeFrameImage.src = tempCanvas.toDataURL("image/jpeg", 0.92);
             freezeLayer.classList.add("show");
             isFrozen = true;
-            stopPredictionLoopOnly();
-            setCameraBanner("Perfect Pose!");
+            stopPredictionLoopOnly(true);
+            setCameraBanner("Perfect hold");
             setButtonsState();
         }
 
@@ -1489,6 +1591,7 @@
             if (stream || isStarting) return;
 
             isStarting = true;
+            forceBackendReset = true;
             setButtonsState();
 
             try {
@@ -1521,16 +1624,36 @@
             }
         }
 
-        function stopPredictionLoopOnly() {
-            if (predictIntervalId) {
-                clearInterval(predictIntervalId);
-                predictIntervalId = null;
+        function stopPredictionLoopOnly(abortActive = true) {
+            predictionStopped = true;
+            if (predictLoopTimerId) {
+                clearTimeout(predictLoopTimerId);
+                predictLoopTimerId = null;
+            }
+            if (abortActive && requestController) {
+                requestController.abort();
+                requestController = null;
+            }
+            if (abortActive) {
+                requestSeq++;
+                requestInFlight = false;
+                requestController = null;
             }
         }
 
         function startPredictionLoop() {
-            stopPredictionLoopOnly();
-            predictIntervalId = setInterval(captureAndPredict, PREDICT_EVERY_MS);
+            stopPredictionLoopOnly(false);
+            predictionStopped = false;
+
+            const loop = async () => {
+                if (predictionStopped || !stream || isFrozen) return;
+                await captureAndPredict();
+                if (!predictionStopped && stream && !isFrozen) {
+                    predictLoopTimerId = window.setTimeout(loop, PREDICT_EVERY_MS);
+                }
+            };
+
+            predictLoopTimerId = window.setTimeout(loop, 0);
         }
 
         function startRenderLoop() {
@@ -1549,7 +1672,9 @@
         async function captureAndPredict() {
             if (isFrozen || requestInFlight || !stream || !video.videoWidth) return;
 
+            const activeSeq = ++requestSeq;
             requestInFlight = true;
+            requestController = new AbortController();
 
             try {
                 captureCanvas.width = video.videoWidth;
@@ -1559,29 +1684,75 @@
                 ctx.drawImage(video, 0, 0, captureCanvas.width, captureCanvas.height);
 
                 const blob = await new Promise(resolve => captureCanvas.toBlob(resolve, "image/jpeg", JPEG_QUALITY));
-                if (!blob) return;
+                if (!blob || blob.size === 0) {
+                    setCameraBanner("Camera frame was empty");
+                    return;
+                }
 
                 const fd = new FormData();
                 fd.append("image", blob, "frame.jpg");
+                if (forceBackendReset) {
+                    fd.append("reset", "true");
+                    forceBackendReset = false;
+                }
 
                 const res = await fetch("{% url 'User:predict_yoga_pose' %}", {
                     method: "POST",
-                    body: fd
+                    body: fd,
+                    signal: requestController.signal
                 });
+                const rawText = await res.text();
+                if (activeSeq !== requestSeq || isFrozen || predictionStopped) return;
 
-                const data = await res.json();
+                if (!res.ok) {
+                    setCameraBanner(`HTTP ${res.status}`);
+                    document.getElementById("liveInstructionText").textContent = "Server request failed.";
+                    document.getElementById("guidanceHeadline").textContent = "Please hold steady and try again.";
+                    return;
+                }
+
+                if (!rawText) {
+                    setCameraBanner("Empty response");
+                    document.getElementById("liveInstructionText").textContent = "The server returned an empty response.";
+                    document.getElementById("guidanceHeadline").textContent = "Trying the next frame.";
+                    return;
+                }
+
+                let data;
+                try {
+                    data = JSON.parse(rawText);
+                } catch (parseError) {
+                    console.error("Non-JSON Tree response:", rawText.slice(0, 300));
+                    setCameraBanner("Invalid response");
+                    document.getElementById("liveInstructionText").textContent = "The server response could not be read.";
+                    document.getElementById("guidanceHeadline").textContent = "Trying the next frame.";
+                    return;
+                }
+
+                if (activeSeq !== requestSeq || isFrozen || predictionStopped) return;
                 if (data && data.success) {
                     updateUI(data);
+                } else {
+                    setCameraBanner("Analysis paused");
+                    document.getElementById("liveInstructionText").textContent = data?.error || "Analysis failed for this frame.";
+                    document.getElementById("guidanceHeadline").textContent = "Keep your full body visible.";
                 }
             } catch (err) {
+                if (err?.name === "AbortError") return;
                 console.error("captureAndPredict error:", err);
+                setCameraBanner("Connection issue");
+                document.getElementById("liveInstructionText").textContent = "Connection issue. Retrying...";
+                document.getElementById("guidanceHeadline").textContent = "Keep your balance steady.";
             } finally {
-                requestInFlight = false;
+                if (activeSeq === requestSeq) {
+                    requestInFlight = false;
+                    requestController = null;
+                }
             }
         }
 
         function stopCamera() {
-            stopPredictionLoopOnly();
+            stopPredictionLoopOnly(true);
 
             if (animationId) {
                 cancelAnimationFrame(animationId);
@@ -1600,9 +1771,21 @@
         }
 
         function resumeCamera() {
+            stopPredictionLoopOnly(true);
             isFrozen = false;
             freezeLayer.classList.remove("show");
-            perfectHoldFrames = 0;
+            freezeFrameImage.src = "";
+            requestInFlight = false;
+            requestController = null;
+            forceBackendReset = true;
+            resetHoldState(false);
+            updateHoldReadouts();
+            lastPayload = null;
+            resetDisplayPointState();
+            speechState.cooldowns.clear();
+            speechState.currentPriority = 0;
+            speechState.activeUtterance = null;
+            clearOverlay();
             startPredictionLoop();
             setCameraBanner("Live");
             setButtonsState();
@@ -1611,15 +1794,20 @@
         function resetUI() {
             lastPayload = null;
             isFrozen = false;
-            perfectHoldFrames = 0;
-            lastSpokenSecond = 0;
-            currentSpeechPriority = 0;
+            requestInFlight = false;
+            requestController = null;
+            predictionStopped = true;
+            forceBackendReset = true;
             freezeLayer.classList.remove("show");
+            freezeFrameImage.src = "";
             countdownOverlay.classList.add("hidden");
             resetDisplayPointState();
+            resetHoldState(true);
+            speechState.currentPriority = 0;
+            speechState.activeUtterance = null;
+            speechState.cooldowns.clear();
 
-            const { width, height } = getCanvasCssSize();
-            overlayCtx.clearRect(0, 0, width, height);
+            clearOverlay();
 
             document.getElementById("poseText").textContent = "-";
             document.getElementById("statusText").textContent = "-";
@@ -1659,15 +1847,14 @@
             if (!synth || !text || text === "-" || text === "Waiting...") return;
 
             const now = Date.now();
-
-            if (text === lastSpokenText && priority === 0) {
-                if ((now - lastSpokenTime) < SPEECH_COOLDOWN_MS) {
-                    return;
-                }
+            const key = String(text).trim().toLowerCase();
+            const lastSpokenAt = speechState.cooldowns.get(key) || 0;
+            if (priority < SPEECH_PRIORITY.ALERT && (now - lastSpokenAt) < SPEECH_COOLDOWN_MS) {
+                return;
             }
 
             if (synth.speaking) {
-                if (priority < currentSpeechPriority) return;
+                if (priority < SPEECH_PRIORITY.ALERT) return;
                 synth.cancel();
             }
 
@@ -1680,15 +1867,17 @@
             if (preferredVoice) utterance.voice = preferredVoice;
 
             utterance.onend = function () {
-                currentSpeechPriority = 0;
+                if (speechState.activeUtterance === utterance) {
+                    speechState.currentPriority = 0;
+                    speechState.activeUtterance = null;
+                }
             };
+            utterance.onerror = utterance.onend;
 
-            window.activeUtterance = utterance;
-            currentSpeechPriority = priority;
+            speechState.activeUtterance = utterance;
+            speechState.currentPriority = priority;
+            speechState.cooldowns.set(key, now);
             synth.speak(utterance);
-
-            lastSpokenText = text;
-            lastSpokenTime = now;
         }
 
         // ==========================================

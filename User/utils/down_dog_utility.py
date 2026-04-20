@@ -1,6 +1,6 @@
 from pathlib import Path
-from collections import deque, Counter
-import time
+from collections import Counter, deque
+from dataclasses import dataclass, field
 import pickle
 import warnings
 
@@ -15,26 +15,49 @@ from django.shortcuts import render
 
 
 # =========================================================
-# GLOBAL STATE
+# RUNTIME / THRESHOLDS
 # =========================================================
-DD_POSE_HISTORY = deque(maxlen=10)
-DD_SCORE_HISTORY = deque(maxlen=8)
-DD_FEEDBACK_HISTORY = deque(maxlen=8)
-
-DD_HIP_CENTER_HISTORY = deque(maxlen=20)
-DD_SHOULDER_CENTER_HISTORY = deque(maxlen=20)
-DD_HIP_HEIGHT_HISTORY = deque(maxlen=20)
-DD_SPINE_LINE_HISTORY = deque(maxlen=20)
-
-DD_VISIBILITY_HISTORY = deque(maxlen=8)
-DD_DETECTION_HISTORY = deque(maxlen=8)
-
-DD_HOLD_START = None
-DD_BEST_HOLD_TIME = 0.0
-DD_PERFECT_HOLD_COUNT = 0
-
-DD_POINT_HISTORY = {}
+DD_POSE_HISTORY_SIZE = 10
+DD_SCORE_HISTORY_SIZE = 8
+DD_FEEDBACK_HISTORY_SIZE = 8
+DD_STABILITY_HISTORY_SIZE = 20
+DD_VISIBILITY_HISTORY_SIZE = 8
+DD_DETECTION_HISTORY_SIZE = 8
 DD_POINT_HISTORY_SIZE = 6
+DD_BOOLEAN_HISTORY_SIZE = 4
+
+DD_DOMINANT_ELBOW_STRAIGHT_ANGLE = 146.0
+DD_SUPPORT_ELBOW_STRAIGHT_ANGLE = 142.0
+DD_DOMINANT_KNEE_STRAIGHT_ANGLE = 142.0
+DD_SUPPORT_KNEE_STRAIGHT_ANGLE = 136.0
+DD_DOMINANT_KNEE_STRONG_ANGLE = 148.0
+DD_SHOULDER_OPEN_MIN_ANGLE = 124.0
+DD_HIP_FOLD_MAX_ANGLE = 132.0
+DD_SUPPORT_VISIBILITY_MIN = 0.40
+DD_DOMINANT_VISIBILITY_MIN = 0.46
+DD_POINT_VISIBILITY_MIN = 0.18
+DD_POSE_READY_SCORE = 72
+DD_HOLD_READY_SCORE = 86
+DD_CORE_SHAPE_READY_MIN = 4
+DD_DETAIL_SHAPE_READY_MIN = 2
+DD_DEGREE_SIGN = chr(176)
+
+DD_SESSION_RUNTIMES = {}
+
+
+@dataclass
+class DownDogRuntime:
+    pose_history: deque = field(default_factory=lambda: deque(maxlen=DD_POSE_HISTORY_SIZE))
+    score_history: deque = field(default_factory=lambda: deque(maxlen=DD_SCORE_HISTORY_SIZE))
+    feedback_history: deque = field(default_factory=lambda: deque(maxlen=DD_FEEDBACK_HISTORY_SIZE))
+    hip_center_history: deque = field(default_factory=lambda: deque(maxlen=DD_STABILITY_HISTORY_SIZE))
+    shoulder_center_history: deque = field(default_factory=lambda: deque(maxlen=DD_STABILITY_HISTORY_SIZE))
+    hip_height_history: deque = field(default_factory=lambda: deque(maxlen=DD_STABILITY_HISTORY_SIZE))
+    spine_line_history: deque = field(default_factory=lambda: deque(maxlen=DD_STABILITY_HISTORY_SIZE))
+    visibility_history: deque = field(default_factory=lambda: deque(maxlen=DD_VISIBILITY_HISTORY_SIZE))
+    detection_history: deque = field(default_factory=lambda: deque(maxlen=DD_DETECTION_HISTORY_SIZE))
+    point_history: dict = field(default_factory=dict)
+    boolean_histories: dict = field(default_factory=dict)
 
 
 # =========================================================
@@ -45,8 +68,8 @@ down_dog_pose_detector = mp_pose.Pose(
     static_image_mode=False,
     model_complexity=2,
     smooth_landmarks=True,
-    min_detection_confidence=0.62,
-    min_tracking_confidence=0.62,
+    min_detection_confidence=0.52,
+    min_tracking_confidence=0.52,
 )
 
 
@@ -206,6 +229,21 @@ def dd_api_error(message, status=400):
 
 
 # =========================================================
+# RUNTIME HELPERS
+# =========================================================
+def dd_get_runtime(request):
+    if request.session.session_key is None:
+        request.session.save()
+
+    session_key = request.session.session_key
+    runtime = DD_SESSION_RUNTIMES.get(session_key)
+    if runtime is None:
+        runtime = DownDogRuntime()
+        DD_SESSION_RUNTIMES[session_key] = runtime
+    return runtime
+
+
+# =========================================================
 # TEXT HELPERS
 # =========================================================
 def dd_clean_text(text):
@@ -250,14 +288,14 @@ def dd_smooth_label(history, new_label):
     return Counter(history).most_common(1)[0][0]
 
 
-def dd_smooth_score(new_score):
-    DD_SCORE_HISTORY.append(float(new_score))
-    return int(round(sum(DD_SCORE_HISTORY) / len(DD_SCORE_HISTORY)))
+def dd_smooth_score(runtime, new_score):
+    runtime.score_history.append(float(new_score))
+    return int(round(sum(runtime.score_history) / len(runtime.score_history)))
 
 
-def dd_smooth_feedback(new_feedback):
-    DD_FEEDBACK_HISTORY.append(str(new_feedback))
-    return Counter(DD_FEEDBACK_HISTORY).most_common(1)[0][0]
+def dd_smooth_feedback(runtime, new_feedback):
+    runtime.feedback_history.append(str(new_feedback))
+    return Counter(runtime.feedback_history).most_common(1)[0][0]
 
 
 def dd_smooth_boolean(history, value):
@@ -266,14 +304,27 @@ def dd_smooth_boolean(history, value):
     return true_count >= max(1, len(history) // 2 + 1)
 
 
-def dd_smooth_point(key, x, y, z):
-    if key not in DD_POINT_HISTORY:
-        DD_POINT_HISTORY[key] = deque(maxlen=DD_POINT_HISTORY_SIZE)
+def dd_smooth_runtime_boolean(runtime, key, value, maxlen=DD_BOOLEAN_HISTORY_SIZE):
+    if key not in runtime.boolean_histories:
+        runtime.boolean_histories[key] = deque(maxlen=maxlen)
+    history = runtime.boolean_histories[key]
+    history.append(bool(value))
+    true_count = sum(history)
 
-    DD_POINT_HISTORY[key].append((float(x), float(y), float(z)))
-    xs = [p[0] for p in DD_POINT_HISTORY[key]]
-    ys = [p[1] for p in DD_POINT_HISTORY[key]]
-    zs = [p[2] for p in DD_POINT_HISTORY[key]]
+    if len(history) < 3:
+        return true_count >= 1
+
+    return true_count >= max(2, len(history) // 2 + 1)
+
+
+def dd_smooth_point(runtime, key, x, y, z):
+    if key not in runtime.point_history:
+        runtime.point_history[key] = deque(maxlen=DD_POINT_HISTORY_SIZE)
+
+    runtime.point_history[key].append((float(x), float(y), float(z)))
+    xs = [p[0] for p in runtime.point_history[key]]
+    ys = [p[1] for p in runtime.point_history[key]]
+    zs = [p[2] for p in runtime.point_history[key]]
 
     return (
         float(sum(xs) / len(xs)),
@@ -282,26 +333,22 @@ def dd_smooth_point(key, x, y, z):
     )
 
 
-def dd_clear_point_history():
-    DD_POINT_HISTORY.clear()
+def dd_clear_point_history(runtime):
+    runtime.point_history.clear()
 
 
-def dd_reset_runtime_state():
-    global DD_HOLD_START, DD_PERFECT_HOLD_COUNT
-
-    DD_POSE_HISTORY.clear()
-    DD_SCORE_HISTORY.clear()
-    DD_FEEDBACK_HISTORY.clear()
-    DD_HIP_CENTER_HISTORY.clear()
-    DD_SHOULDER_CENTER_HISTORY.clear()
-    DD_HIP_HEIGHT_HISTORY.clear()
-    DD_SPINE_LINE_HISTORY.clear()
-    DD_VISIBILITY_HISTORY.clear()
-    DD_DETECTION_HISTORY.clear()
-    dd_clear_point_history()
-
-    DD_HOLD_START = None
-    DD_PERFECT_HOLD_COUNT = 0
+def dd_reset_runtime_state(runtime):
+    runtime.pose_history.clear()
+    runtime.score_history.clear()
+    runtime.feedback_history.clear()
+    runtime.hip_center_history.clear()
+    runtime.shoulder_center_history.clear()
+    runtime.hip_height_history.clear()
+    runtime.spine_line_history.clear()
+    runtime.visibility_history.clear()
+    runtime.detection_history.clear()
+    runtime.boolean_histories.clear()
+    dd_clear_point_history(runtime)
 
 
 # =========================================================
@@ -358,6 +405,14 @@ def dd_distance(a, b):
     a = np.array(a, dtype=np.float32)
     b = np.array(b, dtype=np.float32)
     return float(np.linalg.norm(a - b))
+
+
+def dd_angle_at_least(angle, threshold):
+    return float(angle) >= float(threshold)
+
+
+def dd_angle_at_most(angle, threshold):
+    return float(angle) <= float(threshold)
 
 
 # =========================================================
@@ -490,27 +545,27 @@ def dd_check_body_visibility(lm_dict):
         "left_ankle", "right_ankle",
     ]
     visibilities = [lm_dict[name]["visibility"] for name in core_names]
-    visible_count = sum(v > 0.28 for v in visibilities)
+    visible_count = sum(v > 0.20 for v in visibilities)
     avg_visibility = float(np.mean(visibilities))
 
     shoulders_ok = (
-        lm_dict["left_shoulder"]["visibility"] > 0.40 or
-        lm_dict["right_shoulder"]["visibility"] > 0.40
+        lm_dict["left_shoulder"]["visibility"] > 0.28 or
+        lm_dict["right_shoulder"]["visibility"] > 0.28
     )
     hips_ok = (
-        lm_dict["left_hip"]["visibility"] > 0.40 or
-        lm_dict["right_hip"]["visibility"] > 0.40
+        lm_dict["left_hip"]["visibility"] > 0.30 or
+        lm_dict["right_hip"]["visibility"] > 0.30
     )
     wrists_ok = (
-        lm_dict["left_wrist"]["visibility"] > 0.30 or
-        lm_dict["right_wrist"]["visibility"] > 0.30
+        lm_dict["left_wrist"]["visibility"] > 0.22 or
+        lm_dict["right_wrist"]["visibility"] > 0.22
     )
     ankles_ok = (
-        lm_dict["left_ankle"]["visibility"] > 0.30 or
-        lm_dict["right_ankle"]["visibility"] > 0.30
+        lm_dict["left_ankle"]["visibility"] > 0.22 or
+        lm_dict["right_ankle"]["visibility"] > 0.22
     )
 
-    full_body_visible = visible_count >= 8 and shoulders_ok and hips_ok and wrists_ok and ankles_ok
+    full_body_visible = visible_count >= 5 and shoulders_ok and hips_ok and (wrists_ok or ankles_ok)
     return full_body_visible, visible_count, avg_visibility
 
 
@@ -549,6 +604,8 @@ def dd_check_frame_position(raw_pts):
 # =========================================================
 def analyze_down_dog_pose(raw_pts, landmarks):
     dominant_side, dominant_vis, support_vis = dd_pick_dominant_side(landmarks)
+    support_visible = support_vis >= DD_SUPPORT_VISIBILITY_MIN
+    dominant_visible = dominant_vis >= DD_DOMINANT_VISIBILITY_MIN
 
     if dominant_side == "left":
         s, e, w = raw_pts[DD_LEFT_SHOULDER], raw_pts[DD_LEFT_ELBOW], raw_pts[DD_LEFT_WRIST]
@@ -594,28 +651,25 @@ def analyze_down_dog_pose(raw_pts, landmarks):
     shoulder_to_wrist = dd_distance(s[:2], w[:2]) / torso_size
     hip_to_ankle = dd_distance(h[:2], a[:2]) / torso_size
 
-    hips_above_shoulders = hip_center[1] < shoulder_center[1] - 0.008
-    hips_high_enough = (wrist_center[1] - hip_center[1]) / torso_size > 0.46
-    hips_peak_good = (ankle_center[1] - hip_center[1]) / torso_size > 0.28
+    # Down Dog often comes from a side or diagonal webcam angle, so these gates
+    # allow small perspective errors while still requiring a clear inverted V.
+    hips_above_shoulders = hip_center[1] <= shoulder_center[1] + (0.08 * torso_size)
+    hips_high_enough = (wrist_center[1] - hip_center[1]) / torso_size > 0.24
+    hips_peak_good = (ankle_center[1] - hip_center[1]) / torso_size > 0.20
 
-    spine_long = base_length > 1.34
-    side_profile_clear = arm_line_length > 1.00 and leg_line_length > 1.05
-    arm_length_ok = shoulder_to_wrist > 0.95
-    leg_length_ok = hip_to_ankle > 1.00
+    spine_long = base_length > 1.18
+    side_profile_clear = arm_line_length > 0.82 and leg_line_length > 0.88
+    arm_length_ok = shoulder_to_wrist > 0.78
+    leg_length_ok = hip_to_ankle > 0.82
 
-    dominant_arm_soft = dom_elbow_angle > 150
-    # CHANGED: 160 is more realistic for human flexibility without failing everyone
-    dominant_arm_strict = dom_elbow_angle > 160 
-    dominant_leg_soft = dom_knee_angle > 150
-    dominant_leg_strict = dom_knee_angle > 160
+    dominant_arm_straight = dd_angle_at_least(dom_elbow_angle, DD_DOMINANT_ELBOW_STRAIGHT_ANGLE)
+    support_arm_straight = dd_angle_at_least(sup_elbow_angle, DD_SUPPORT_ELBOW_STRAIGHT_ANGLE) if support_visible else True
+    dominant_leg_straight = dd_angle_at_least(dom_knee_angle, DD_DOMINANT_KNEE_STRAIGHT_ANGLE)
+    dominant_leg_strict = dd_angle_at_least(dom_knee_angle, DD_DOMINANT_KNEE_STRONG_ANGLE)
+    support_leg_straight = dd_angle_at_least(sup_knee_angle, DD_SUPPORT_KNEE_STRAIGHT_ANGLE) if support_visible else True
 
-    support_arm_soft = sup_elbow_angle > 145
-    support_leg_soft = sup_knee_angle > 145
-
-    # CHANGED: 55 degrees is practically bent in half. In Down Dog, the shoulders 
-    # form a straight line with the torso, so it should be > 135
-    shoulder_open_ok = dom_shoulder_open > 135 
-    hip_fold_ok = dom_hip_fold < 122
+    shoulder_open_ok = dd_angle_at_least(dom_shoulder_open, DD_SHOULDER_OPEN_MIN_ANGLE)
+    hip_fold_ok = dd_angle_at_most(dom_hip_fold, DD_HIP_FOLD_MAX_ANGLE)
 
     hands_width_ratio = dd_distance(lw[:2], rw[:2]) / (dd_distance(ls[:2], rs[:2]) + 1e-6)
     feet_width_ratio = dd_distance(la[:2], ra[:2]) / (dd_distance(lh[:2], rh[:2]) + 1e-6)
@@ -623,10 +677,7 @@ def analyze_down_dog_pose(raw_pts, landmarks):
     hands_width_ok = 0.72 <= hands_width_ratio <= 1.75
     feet_width_ok = 0.62 <= feet_width_ratio <= 1.75
 
-    # CHANGED: Comparing nose X against wrist X breaks completely in a side profile. 
-    # To check if the head is "between the arms", we just make sure the head drops 
-    # properly below the shoulders (Y axis).
-    head_between_arms = nose[1] > shoulder_center[1] + 0.04
+    head_between_arms = nose[1] > shoulder_center[1] - (0.10 * torso_size)
 
     shoulder_symmetry = abs(float(ls[1] - rs[1])) / torso_size < 0.18
     hip_symmetry = abs(float(lh[1] - rh[1])) / torso_size < 0.18
@@ -637,130 +688,83 @@ def analyze_down_dog_pose(raw_pts, landmarks):
     heels_reasonable = heel_lift < 0.24
     both_heels_reasonable = heel_lift < 0.24 and heel_lift_other < 0.28
 
+    core_shape_count = sum([
+        hips_above_shoulders,
+        hips_high_enough,
+        dominant_arm_straight,
+        dominant_leg_straight,
+        shoulder_open_ok,
+        hip_fold_ok,
+        spine_long,
+    ])
+    detail_shape_count = sum([
+        head_between_arms,
+        side_profile_clear,
+        arm_length_ok,
+        leg_length_ok,
+        hands_width_ok,
+        feet_width_ok,
+    ])
+    core_shape_ready = core_shape_count >= DD_CORE_SHAPE_READY_MIN
+    detail_shape_ready = detail_shape_count >= DD_DETAIL_SHAPE_READY_MIN
+    soft_down_dog_gate = (
+        hips_above_shoulders and
+        hips_high_enough and
+        hip_fold_ok and
+        core_shape_ready and
+        detail_shape_ready
+    )
+
     dominant_side_gate = (
         hips_above_shoulders and
         hips_high_enough and
-        dominant_arm_soft and
-        dominant_leg_soft and
-        shoulder_open_ok and
+        dominant_arm_straight and
         hip_fold_ok and
-        head_between_arms and
-        spine_long and
-        side_profile_clear and
-        arm_length_ok and
-        leg_length_ok
+        core_shape_count >= 5 and
+        detail_shape_count >= 3
     )
 
     both_side_bonus_gate = (
-        support_vis >= 0.52 and
-        support_arm_soft and
-        support_leg_soft and
+        support_visible and
+        support_arm_straight and
+        support_leg_straight and
         balanced_shape and
         hands_width_ok and
         feet_width_ok and
         both_heels_reasonable
     )
 
-    strict_down_dog_gate = dominant_side_gate and (support_vis < 0.52 or both_side_bonus_gate)
-
-    score = 0
-    status = "warning"
-    pose_label = "Not Down Dog"
-    main_feedback = "Move into Downward Dog position."
-    tips = ["Place both hands and feet firmly on the floor."]
-
-    if not hips_above_shoulders:
-        score = 35
-        main_feedback = "Lift your hips higher."
-        tips = ["Push the floor away and send the hips up."]
-
-    elif not hips_high_enough:
-        score = 48
-        main_feedback = "Lift your hips more to build the inverted V."
-        tips = ["Press strongly through your hands and feet."]
-
-    elif not dominant_arm_soft:
-        score = 60
-        main_feedback = "Straighten your supporting arm line more."
-        tips = ["Keep the elbow long and firm.", "Push the floor away."]
-
-    elif not dominant_leg_soft:
-        score = 72
-        main_feedback = "Lengthen your main visible leg more."
-        tips = ["Straighten the knee as much as comfortable."]
-
-    elif not shoulder_open_ok:
-        score = 78
-        main_feedback = "Push back through your hands more."
-        tips = ["Reach your chest back toward your thighs.", "Open the shoulders."]
-
-    elif not hip_fold_ok:
-        score = 82
-        main_feedback = "Fold more from the hips."
-        tips = ["Lift the hips and draw the ribs back."]
-
-    elif not spine_long:
-        score = 86
-        main_feedback = "Lengthen your spine more."
-        tips = ["Reach the hips up and the chest back."]
-
-    elif not head_between_arms:
-        score = 88
-        main_feedback = "Relax your head more between the arms."
-        tips = ["Let the neck stay soft and natural.", "Look toward your toes."]
-
-    elif not hands_width_ok:
-        score = 90
-        main_feedback = "Adjust your hands slightly."
-        tips = ["Keep the hands around shoulder width."]
-
-    elif not feet_width_ok:
-        score = 90
-        main_feedback = "Adjust your feet slightly."
-        tips = ["Keep the feet around hip width."]
-
-    elif strict_down_dog_gate and dominant_arm_strict and dominant_leg_strict and hips_peak_good:
-        if support_vis >= 0.52 and both_side_bonus_gate:
-            score = 100
-            status = "perfect"
-            pose_label = "Correct Down Dog"
-            main_feedback = "Perfect Down Dog. Hold steady."
-            tips = ["Excellent posture.", "Keep breathing steadily.", "Maintain the inverted V shape."]
-        else:
-            score = 96
-            status = "perfect"  # Changed from 'good' so the timer reliably triggers
-            pose_label = "Down Dog"
-            main_feedback = "Strong Down Dog. Hold steady."
-            tips = ["Very good side alignment.", "Keep the shape steady."]
-
-    else:
-        score = 92
-        status = "good"
-        pose_label = "Down Dog"
-        main_feedback = "Good Down Dog. Refine and hold steady."
-        tips = ["Keep the hips high and the spine long."]
+    strict_down_dog_gate = (
+        dominant_side_gate and
+        dominant_leg_straight and
+        shoulder_open_ok and
+        spine_long and
+        (support_vis < DD_SUPPORT_VISIBILITY_MIN or both_side_bonus_gate)
+    )
 
     checks = {
-        "dominant_side": dominant_side,
-        "dominant_side_name": side_name,
-        "dominant_vis": round(float(dominant_vis), 3),
-        "support_vis": round(float(support_vis), 3),
-        "dominant_arm_soft": dominant_arm_soft,
-        "dominant_arm_strict": dominant_arm_strict,
-        "dominant_leg_soft": dominant_leg_soft,
+        "dominant_visible": dominant_visible,
+        "support_visible": support_visible,
+        "dominant_arm_straight": dominant_arm_straight,
         "dominant_leg_strict": dominant_leg_strict,
-        "support_arm_soft": support_arm_soft,
-        "support_leg_soft": support_leg_soft,
+        "dominant_leg_straight": dominant_leg_straight,
+        "support_arm_straight": support_arm_straight,
+        "support_leg_straight": support_leg_straight,
         "hips_above_shoulders": hips_above_shoulders,
-        "hips_high_enough": hips_high_enough,
-        "hips_peak_good": hips_peak_good,
+        "hips_high": hips_high_enough,
+        "hips_peak": hips_peak_good,
         "head_between_arms": head_between_arms,
         "spine_long": spine_long,
-        "shoulder_open_ok": shoulder_open_ok,
+        "shoulder_open": shoulder_open_ok,
         "hip_fold_ok": hip_fold_ok,
         "side_profile_clear": side_profile_clear,
         "arm_length_ok": arm_length_ok,
         "leg_length_ok": leg_length_ok,
+        "core_shape_count": core_shape_count,
+        "detail_shape_count": detail_shape_count,
+        "core_shape_ready": core_shape_ready,
+        "detail_shape_ready": detail_shape_ready,
+        "soft_down_dog_gate": soft_down_dog_gate,
         "balanced_shape": balanced_shape,
         "hands_width_ok": hands_width_ok,
         "feet_width_ok": feet_width_ok,
@@ -769,17 +773,22 @@ def analyze_down_dog_pose(raw_pts, landmarks):
         "dominant_side_gate": dominant_side_gate,
         "both_side_bonus_gate": both_side_bonus_gate,
         "strict_down_dog_gate": strict_down_dog_gate,
+        "left_elbow_ok": dominant_arm_straight if dominant_side == "left" else support_arm_straight,
+        "right_elbow_ok": dominant_arm_straight if dominant_side == "right" else support_arm_straight,
+        "left_knee_ok": dominant_leg_straight if dominant_side == "left" else support_leg_straight,
+        "right_knee_ok": dominant_leg_straight if dominant_side == "right" else support_leg_straight,
     }
 
     return {
-        "pose_label": pose_label,
-        "score": score,
-        "status": status,
-        "main_feedback": main_feedback,
-        "tips": tips,
+        "dominant_side": dominant_side,
+        "dominant_side_name": side_name,
+        "dominant_vis": round(float(dominant_vis), 3),
+        "support_vis": round(float(support_vis), 3),
         "angles": {
             "dominant_elbow_angle": round(float(dom_elbow_angle), 1),
             "dominant_knee_angle": round(float(dom_knee_angle), 1),
+            "dominant_shoulder_open_angle": round(float(dom_shoulder_open), 1),
+            "dominant_hip_fold_angle": round(float(dom_hip_fold), 1),
             "support_elbow_angle": round(float(sup_elbow_angle), 1),
             "support_knee_angle": round(float(sup_knee_angle), 1),
             "left_elbow_angle": round(dd_calculate_angle(ls[:2], raw_pts[DD_LEFT_ELBOW][:2], lw[:2]), 1),
@@ -787,29 +796,263 @@ def analyze_down_dog_pose(raw_pts, landmarks):
             "left_knee_angle": round(dd_calculate_angle(lh[:2], raw_pts[DD_LEFT_KNEE][:2], la[:2]), 1),
             "right_knee_angle": round(dd_calculate_angle(rh[:2], raw_pts[DD_RIGHT_KNEE][:2], ra[:2]), 1),
         },
+        "measures": {
+            "hips_height_ratio": round(float((wrist_center[1] - hip_center[1]) / torso_size), 3),
+            "hips_peak_ratio": round(float((ankle_center[1] - hip_center[1]) / torso_size), 3),
+            "hands_width_ratio": round(float(hands_width_ratio), 3),
+            "feet_width_ratio": round(float(feet_width_ratio), 3),
+            "core_shape_count": int(core_shape_count),
+            "detail_shape_count": int(detail_shape_count),
+        },
         "checks": checks,
     }
 
-
-def dd_is_downdog_like(model_label, model_confidence, analysis):
-    label = str(model_label).lower()
+def dd_build_joint_states(runtime, analysis):
     checks = analysis["checks"]
+    angles = analysis["angles"]
+    measures = analysis["measures"]
 
-    if not checks.get("dominant_side_gate", False):
-        return False
+    smoothed_checks = {
+        "dominant_visible": dd_smooth_runtime_boolean(runtime, "dominant_visible", checks["dominant_visible"]),
+        "support_visible": dd_smooth_runtime_boolean(runtime, "support_visible", checks["support_visible"]),
+        "dominant_arm_straight": dd_smooth_runtime_boolean(runtime, "dominant_arm_straight", checks["dominant_arm_straight"]),
+        "support_arm_straight": dd_smooth_runtime_boolean(runtime, "support_arm_straight", checks["support_arm_straight"]),
+        "dominant_leg_straight": dd_smooth_runtime_boolean(runtime, "dominant_leg_straight", checks["dominant_leg_straight"]),
+        "dominant_leg_strict": dd_smooth_runtime_boolean(runtime, "dominant_leg_strict", checks["dominant_leg_strict"]),
+        "support_leg_straight": dd_smooth_runtime_boolean(runtime, "support_leg_straight", checks["support_leg_straight"]),
+        "hips_above_shoulders": dd_smooth_runtime_boolean(runtime, "hips_above_shoulders", checks["hips_above_shoulders"]),
+        "hips_high": dd_smooth_runtime_boolean(runtime, "hips_high", checks["hips_high"]),
+        "hips_peak": dd_smooth_runtime_boolean(runtime, "hips_peak", checks["hips_peak"]),
+        "head_between_arms": dd_smooth_runtime_boolean(runtime, "head_between_arms", checks["head_between_arms"]),
+        "spine_long": dd_smooth_runtime_boolean(runtime, "spine_long", checks["spine_long"]),
+        "shoulder_open": dd_smooth_runtime_boolean(runtime, "shoulder_open", checks["shoulder_open"]),
+        "hip_fold_ok": dd_smooth_runtime_boolean(runtime, "hip_fold_ok", checks["hip_fold_ok"]),
+        "side_profile_clear": dd_smooth_runtime_boolean(runtime, "side_profile_clear", checks["side_profile_clear"]),
+        "arm_length_ok": dd_smooth_runtime_boolean(runtime, "arm_length_ok", checks["arm_length_ok"]),
+        "leg_length_ok": dd_smooth_runtime_boolean(runtime, "leg_length_ok", checks["leg_length_ok"]),
+        "core_shape_ready": dd_smooth_runtime_boolean(runtime, "core_shape_ready", checks["core_shape_ready"]),
+        "detail_shape_ready": dd_smooth_runtime_boolean(runtime, "detail_shape_ready", checks["detail_shape_ready"]),
+        "soft_down_dog_gate": dd_smooth_runtime_boolean(runtime, "soft_down_dog_gate", checks["soft_down_dog_gate"]),
+        "balanced_shape": dd_smooth_runtime_boolean(runtime, "balanced_shape", checks["balanced_shape"]),
+        "hands_width_ok": dd_smooth_runtime_boolean(runtime, "hands_width_ok", checks["hands_width_ok"]),
+        "feet_width_ok": dd_smooth_runtime_boolean(runtime, "feet_width_ok", checks["feet_width_ok"]),
+        "heels_reasonable": dd_smooth_runtime_boolean(runtime, "heels_reasonable", checks["heels_reasonable"]),
+        "both_heels_reasonable": dd_smooth_runtime_boolean(runtime, "both_heels_reasonable", checks["both_heels_reasonable"]),
+        "dominant_side_gate": dd_smooth_runtime_boolean(runtime, "dominant_side_gate", checks["dominant_side_gate"]),
+        "both_side_bonus_gate": dd_smooth_runtime_boolean(runtime, "both_side_bonus_gate", checks["both_side_bonus_gate"]),
+        "strict_down_dog_gate": dd_smooth_runtime_boolean(runtime, "strict_down_dog_gate", checks["strict_down_dog_gate"]),
+        "left_elbow_ok": dd_smooth_runtime_boolean(runtime, "left_elbow_ok", checks["left_elbow_ok"]),
+        "right_elbow_ok": dd_smooth_runtime_boolean(runtime, "right_elbow_ok", checks["right_elbow_ok"]),
+        "left_knee_ok": dd_smooth_runtime_boolean(runtime, "left_knee_ok", checks["left_knee_ok"]),
+        "right_knee_ok": dd_smooth_runtime_boolean(runtime, "right_knee_ok", checks["right_knee_ok"]),
+    }
+
+    joint_states = {
+        "dominant_side": analysis["dominant_side"],
+        "dominant_visible": {
+            "ok": smoothed_checks["dominant_visible"],
+            "value": analysis["dominant_vis"],
+        },
+        "support_visible": {
+            "ok": smoothed_checks["support_visible"],
+            "value": analysis["support_vis"],
+        },
+        "left_elbow": {
+            "ok": smoothed_checks["left_elbow_ok"],
+            "angle": angles["left_elbow_angle"],
+            "threshold": DD_DOMINANT_ELBOW_STRAIGHT_ANGLE if analysis["dominant_side"] == "left" else DD_SUPPORT_ELBOW_STRAIGHT_ANGLE,
+        },
+        "right_elbow": {
+            "ok": smoothed_checks["right_elbow_ok"],
+            "angle": angles["right_elbow_angle"],
+            "threshold": DD_DOMINANT_ELBOW_STRAIGHT_ANGLE if analysis["dominant_side"] == "right" else DD_SUPPORT_ELBOW_STRAIGHT_ANGLE,
+        },
+        "left_knee": {
+            "ok": smoothed_checks["left_knee_ok"],
+            "angle": angles["left_knee_angle"],
+            "threshold": DD_DOMINANT_KNEE_STRAIGHT_ANGLE if analysis["dominant_side"] == "left" else DD_SUPPORT_KNEE_STRAIGHT_ANGLE,
+        },
+        "right_knee": {
+            "ok": smoothed_checks["right_knee_ok"],
+            "angle": angles["right_knee_angle"],
+            "threshold": DD_DOMINANT_KNEE_STRAIGHT_ANGLE if analysis["dominant_side"] == "right" else DD_SUPPORT_KNEE_STRAIGHT_ANGLE,
+        },
+        "hips_high": {
+            "ok": smoothed_checks["hips_high"],
+            "value": measures["hips_height_ratio"],
+        },
+        "spine_long": {
+            "ok": smoothed_checks["spine_long"],
+        },
+        "shoulders_open": {
+            "ok": smoothed_checks["shoulder_open"],
+            "angle": angles["dominant_shoulder_open_angle"],
+            "threshold": DD_SHOULDER_OPEN_MIN_ANGLE,
+            "side": analysis["dominant_side_name"],
+        },
+        "hip_fold": {
+            "ok": smoothed_checks["hip_fold_ok"],
+            "angle": angles["dominant_hip_fold_angle"],
+            "threshold": DD_HIP_FOLD_MAX_ANGLE,
+            "side": analysis["dominant_side_name"],
+        },
+        "head_between_arms": {
+            "ok": smoothed_checks["head_between_arms"],
+        },
+        "hands_width": {
+            "ok": smoothed_checks["hands_width_ok"],
+            "value": measures["hands_width_ratio"],
+        },
+        "feet_width": {
+            "ok": smoothed_checks["feet_width_ok"],
+            "value": measures["feet_width_ratio"],
+        },
+    }
+
+    return joint_states, smoothed_checks
+
+
+def dd_score_down_dog_pose(analysis, checks):
+    score = 0
+    status = "warning"
+    pose_label = "Not Down Dog"
+    feedback = "Move into Downward Dog."
+    coach_text = "Press the floor away and lift the hips up."
+    tips = ["Place both hands and feet firmly on the floor."]
+
+    if not checks["hips_above_shoulders"]:
+        score = 35
+        feedback = "Lift your hips higher."
+        coach_text = "Lift your hips higher."
+        tips = ["Push the floor away and send the hips up."]
+    elif not checks["hips_high"]:
+        score = 48
+        feedback = "Lift your hips more to build the inverted V."
+        coach_text = "Lift your hips more."
+        tips = ["Press strongly through your hands and feet."]
+    elif not (checks["dominant_arm_straight"] and checks["support_arm_straight"]):
+        score = 65
+        feedback = "Straighten your elbows."
+        coach_text = "Straighten your elbows."
+        tips = ["Press firmly through the hands.", "Lengthen through both arms."]
+    elif not checks["dominant_leg_straight"]:
+        score = 72
+        feedback = "Lengthen your main visible leg more."
+        coach_text = "Lengthen your visible leg more."
+        tips = ["Straighten the knee as much as comfortable."]
+    elif not checks["shoulder_open"]:
+        score = 78
+        feedback = "Push back through your hands more."
+        coach_text = "Open the shoulders more."
+        tips = ["Reach your chest back toward your thighs.", "Open the shoulders."]
+    elif not checks["hip_fold_ok"]:
+        score = 82
+        feedback = "Fold more from the hips."
+        coach_text = "Fold more from the hips."
+        tips = ["Lift the hips and draw the ribs back."]
+    elif not checks["spine_long"]:
+        score = 86
+        feedback = "Lengthen your spine more."
+        coach_text = "Lengthen your spine more."
+        tips = ["Reach the hips up and the chest back."]
+    elif not checks["head_between_arms"]:
+        score = 88
+        feedback = "Relax your head more between the arms."
+        coach_text = "Relax your head between the arms."
+        tips = ["Let the neck stay soft and natural.", "Look toward your toes."]
+    elif not checks["hands_width_ok"]:
+        score = 90
+        feedback = "Adjust your hands slightly."
+        coach_text = "Adjust your hands slightly."
+        tips = ["Keep the hands around shoulder width."]
+    elif not checks["feet_width_ok"]:
+        score = 90
+        feedback = "Adjust your feet slightly."
+        coach_text = "Adjust your feet slightly."
+        tips = ["Keep the feet around hip width."]
+    elif checks["strict_down_dog_gate"] and checks["dominant_leg_strict"] and checks["hips_peak"]:
+        if checks["support_visible"] and checks["both_side_bonus_gate"] and checks["dominant_visible"]:
+            score = 100
+            status = "perfect"
+            pose_label = "Correct Down Dog"
+            feedback = "Beautiful Downward Dog. Hold steady."
+            coach_text = "Keep the hips high, the spine long, and the breath steady."
+            tips = ["Excellent posture.", "Keep breathing steadily.", "Maintain the inverted V shape."]
+        else:
+            score = 96
+            status = "good"
+            pose_label = "Down Dog"
+            feedback = "Strong Downward Dog. Hold steady."
+            coach_text = "Keep pressing the floor away and stay long through the spine."
+            tips = ["Very good side alignment.", "Keep the shape steady."]
+    else:
+        score = 92
+        status = "good"
+        pose_label = "Down Dog"
+        feedback = "Good Downward Dog. Refine the shape and hold steady."
+        coach_text = "Keep the hips lifted and smooth out the main weak point."
+        tips = ["Keep the hips high and the spine long."]
+
+    return {
+        "score": score,
+        "status": status,
+        "pose_label": pose_label,
+        "feedback": feedback,
+        "coach_text": coach_text,
+        "tips": tips,
+    }
+
+
+def dd_pose_flags(checks, stable_score, pose_status):
+    pose_ready = bool(
+        checks.get("dominant_side_gate") or
+        checks.get("soft_down_dog_gate") or
+        (
+            checks.get("hips_above_shoulders") and
+            checks.get("hips_high") and
+            checks.get("hip_fold_ok") and
+            stable_score >= DD_POSE_READY_SCORE
+        )
+    )
+    good_pose_ready = bool(
+        pose_ready and
+        stable_score >= 78 and
+        (checks.get("soft_down_dog_gate") or checks.get("dominant_side_gate")) and
+        str(pose_status).lower() in {"good", "perfect"}
+    )
+    hold_ready = bool(
+        good_pose_ready and
+        checks.get("dominant_side_gate") and
+        checks.get("spine_long") and
+        checks.get("hips_high") and
+        stable_score >= DD_HOLD_READY_SCORE
+    )
+
+    return {
+        "pose_ready": pose_ready,
+        "good_pose_ready": good_pose_ready,
+        "hold_ready": hold_ready,
+    }
+
+
+def dd_is_downdog_like(model_label, model_confidence, checks):
+    label = str(model_label).lower()
+
+    if checks.get("dominant_side_gate", False):
+        return True
+
+    if checks.get("soft_down_dog_gate", False):
+        return True
 
     if ("down" in label or "dog" in label) and model_confidence >= 0.58:
         return True
 
     if (
         checks.get("hips_above_shoulders") and
-        checks.get("hips_high_enough") and
-        checks.get("dominant_arm_soft") and
-        checks.get("dominant_leg_soft") and
-        checks.get("shoulder_open_ok") and
+        checks.get("hips_high") and
         checks.get("hip_fold_ok") and
-        checks.get("head_between_arms") and
-        checks.get("spine_long")
+        checks.get("core_shape_ready") and
+        checks.get("detail_shape_ready")
     ):
         return True
 
@@ -819,21 +1062,21 @@ def dd_is_downdog_like(model_label, model_confidence, analysis):
 # =========================================================
 # STABILITY / HOLD / QUALITY
 # =========================================================
-def dd_update_stability_metrics(raw_pts):
+def dd_update_stability_metrics(runtime, raw_pts):
     shoulder_center = (raw_pts[DD_LEFT_SHOULDER] + raw_pts[DD_RIGHT_SHOULDER]) / 2.0
     hip_center = (raw_pts[DD_LEFT_HIP] + raw_pts[DD_RIGHT_HIP]) / 2.0
 
-    DD_HIP_CENTER_HISTORY.append(float(hip_center[0]))
-    DD_SHOULDER_CENTER_HISTORY.append(float(shoulder_center[0]))
-    DD_HIP_HEIGHT_HISTORY.append(float(hip_center[1]))
-    DD_SPINE_LINE_HISTORY.append(abs(float(shoulder_center[0] - hip_center[0])))
+    runtime.hip_center_history.append(float(hip_center[0]))
+    runtime.shoulder_center_history.append(float(shoulder_center[0]))
+    runtime.hip_height_history.append(float(hip_center[1]))
+    runtime.spine_line_history.append(abs(float(shoulder_center[0] - hip_center[0])))
 
 
-def dd_get_stability_feedback():
-    hip_shift = dd_moving_std(DD_HIP_CENTER_HISTORY)
-    shoulder_shift = dd_moving_std(DD_SHOULDER_CENTER_HISTORY)
-    hip_height_wobble = dd_moving_std(DD_HIP_HEIGHT_HISTORY)
-    spine_wobble = dd_moving_std(DD_SPINE_LINE_HISTORY)
+def dd_get_stability_feedback(runtime):
+    hip_shift = dd_moving_std(runtime.hip_center_history)
+    shoulder_shift = dd_moving_std(runtime.shoulder_center_history)
+    hip_height_wobble = dd_moving_std(runtime.hip_height_history)
+    spine_wobble = dd_moving_std(runtime.spine_line_history)
 
     feedback = []
     penalty = 0
@@ -854,35 +1097,6 @@ def dd_get_stability_feedback():
     return feedback, penalty
 
 
-def dd_update_hold_state(is_downdog, full_body_visible, low_light):
-    global DD_HOLD_START, DD_BEST_HOLD_TIME
-
-    valid_hold = is_downdog and full_body_visible and not low_light
-
-    if valid_hold:
-        if DD_HOLD_START is None:
-            DD_HOLD_START = time.time()
-        hold_time = time.time() - DD_HOLD_START
-        DD_BEST_HOLD_TIME = max(DD_BEST_HOLD_TIME, hold_time)
-    else:
-        hold_time = 0.0
-        DD_HOLD_START = None
-
-    return hold_time, DD_BEST_HOLD_TIME
-
-
-def dd_hold_bonus(hold_time):
-    if hold_time >= 10:
-        return 8
-    if hold_time >= 7:
-        return 6
-    if hold_time >= 5:
-        return 4
-    if hold_time >= 3:
-        return 2
-    return 0
-
-
 def dd_quality_from_score(score):
     if score >= 98:
         return "Perfect_DownDog"
@@ -894,8 +1108,7 @@ def dd_quality_from_score(score):
 
 
 def dd_build_points_for_frontend(raw_pts, landmarks, analysis):
-    checks = analysis["checks"]
-    dominant_side = checks.get("dominant_side", "left")
+    dominant_side = analysis.get("dominant_side", "left")
     dominant_idxs = (
         [DD_LEFT_SHOULDER, DD_LEFT_ELBOW, DD_LEFT_WRIST, DD_LEFT_HIP, DD_LEFT_KNEE, DD_LEFT_ANKLE]
         if dominant_side == "left" else
@@ -905,53 +1118,27 @@ def dd_build_points_for_frontend(raw_pts, landmarks, analysis):
     points = []
     for idx in DD_SELECTED_POINTS + DD_EXTRA_POINTS:
         visibility = float(landmarks[idx].visibility)
-        if visibility < 0.24:
+        if visibility < DD_POINT_VISIBILITY_MIN:
             continue
 
         is_dominant = idx in dominant_idxs
-        
-        # Keep radius 5 for hidden limbs so the frontend knows to ignore them
-        radius = 7 if is_dominant else 5
-        color = DD_GREEN if analysis["score"] >= 90 and is_dominant else DD_YELLOW
-
-        if idx in [DD_LEFT_ELBOW, DD_RIGHT_ELBOW] and (
-            (idx in dominant_idxs and not checks.get("dominant_arm_soft")) or
-            (idx not in dominant_idxs and checks.get("support_vis", 0) >= 0.52 and not checks.get("support_arm_soft"))
-        ):
-            color = DD_RED
-            radius = 8
-        if idx in [DD_LEFT_KNEE, DD_RIGHT_KNEE] and (
-            (idx in dominant_idxs and not checks.get("dominant_leg_soft")) or
-            (idx not in dominant_idxs and checks.get("support_vis", 0) >= 0.52 and not checks.get("support_leg_soft"))
-        ):
-            color = DD_RED
-            radius = 8
-        if idx in [DD_LEFT_HIP, DD_RIGHT_HIP] and not checks.get("hips_high_enough"):
-            color = DD_RED
-            radius = 8
-        if idx in [DD_LEFT_SHOULDER, DD_RIGHT_SHOULDER] and not checks.get("shoulder_open_ok") and idx in dominant_idxs:
-            color = DD_RED
-            radius = 8
-        if idx == DD_NOSE and not checks.get("head_between_arms"):
-            color = DD_RED
-            radius = 8
 
         points.append({
             "name": DD_POINT_NAME_MAP.get(idx, f"point_{idx}"),
             "x": float(np.clip(raw_pts[idx][0], 0.0, 1.0)),
             "y": float(np.clip(raw_pts[idx][1], 0.0, 1.0)),
-            "color": color,
-            "radius": radius,
+            "color": DD_YELLOW,
+            "radius": 7 if is_dominant else 6,
             "visible": True,
             "visibility": round(visibility, 3),
+            "role": "dominant" if is_dominant else "support",
         })
     return points
 
 
 def dd_build_angle_texts(raw_pts, landmarks, analysis):
-    checks = analysis["checks"]
-    dominant_side = checks.get("dominant_side", "left")
-    support_visible = checks.get("support_vis", 0.0) >= 0.52
+    dominant_side = analysis.get("dominant_side", "left")
+    support_visible = analysis.get("support_vis", 0.0) >= DD_SUPPORT_VISIBILITY_MIN
     items = []
 
     if dominant_side == "left":
@@ -977,13 +1164,81 @@ def dd_build_angle_texts(raw_pts, landmarks, analysis):
     return items
 
 
+def dd_build_angle_texts_v2(raw_pts, landmarks, analysis):
+    dominant_side = analysis.get("dominant_side", "left")
+    support_visible = analysis.get("support_vis", 0.0) >= DD_SUPPORT_VISIBILITY_MIN
+    items = []
+
+    if dominant_side == "left":
+        primary = [
+            (DD_LEFT_ELBOW, analysis["angles"].get("left_elbow_angle", 0), DD_YELLOW, "left_elbow"),
+            (DD_LEFT_KNEE, analysis["angles"].get("left_knee_angle", 0), DD_YELLOW, "left_knee"),
+        ]
+        secondary = [
+            (DD_RIGHT_ELBOW, analysis["angles"].get("right_elbow_angle", 0), DD_CYAN, "right_elbow"),
+            (DD_RIGHT_KNEE, analysis["angles"].get("right_knee_angle", 0), DD_CYAN, "right_knee"),
+        ]
+    else:
+        primary = [
+            (DD_RIGHT_ELBOW, analysis["angles"].get("right_elbow_angle", 0), DD_YELLOW, "right_elbow"),
+            (DD_RIGHT_KNEE, analysis["angles"].get("right_knee_angle", 0), DD_YELLOW, "right_knee"),
+        ]
+        secondary = [
+            (DD_LEFT_ELBOW, analysis["angles"].get("left_elbow_angle", 0), DD_CYAN, "left_elbow"),
+            (DD_LEFT_KNEE, analysis["angles"].get("left_knee_angle", 0), DD_CYAN, "left_knee"),
+        ]
+
+    for idx, value, color, joint_key in primary + (secondary if support_visible else []):
+        if float(landmarks[idx].visibility) < 0.30:
+            continue
+        items.append({
+            "text": f"{int(round(float(value)))}{DD_DEGREE_SIGN}",
+            "x": float(np.clip(raw_pts[idx][0], 0.0, 1.0)),
+            "y": float(np.clip(raw_pts[idx][1], 0.0, 1.0)),
+            "color": color,
+            "joint_key": joint_key,
+        })
+    return items
+
+
+dd_build_angle_texts = dd_build_angle_texts_v2
+
+
+def dd_pose_success(**kwargs):
+    payload = {
+        "pose": "Unknown",
+        "model_pose": "Unknown",
+        "quality": "N/A",
+        "feedback": "Waiting for pose.",
+        "coach_text": "Press the floor away and lift the hips up.",
+        "status": "warning",
+        "confidence": 0.0,
+        "score": 0,
+        "hold_time": 0.0,
+        "best_hold_time": 0.0,
+        "angles": {},
+        "details": [],
+        "perfect_hold": False,
+        "points": [],
+        "angle_texts": [],
+        "joint_states": {},
+        "pose_ready": False,
+        "hold_ready": False,
+    }
+    payload.update(kwargs)
+    return dd_api_success(**payload)
+
+
 # =========================================================
 # MAIN PROCESS
 # =========================================================
 def process_down_dog_request(request):
-    global DD_PERFECT_HOLD_COUNT, DD_HOLD_START
-
     try:
+        runtime = dd_get_runtime(request)
+
+        if request.POST.get("reset") == "true":
+            dd_reset_runtime_state(runtime)
+
         uploaded_file = request.FILES["image"]
         frame = dd_read_uploaded_image(uploaded_file)
 
@@ -994,67 +1249,36 @@ def process_down_dog_request(request):
 
         low_light, brightness = dd_check_lighting(frame)
         if low_light:
-            dd_reset_runtime_state()
-            return dd_api_success(
+            dd_reset_runtime_state(runtime)
+            return dd_pose_success(
                 pose="Low Light",
-                model_pose="Unknown",
-                quality="N/A",
                 feedback="Room lighting is too low for accurate pose detection.",
                 coach_text="Improve the lighting and try again.",
                 status="warning",
-                confidence=0.0,
-                score=0,
-                hold_time=0.0,
-                best_hold_time=round(float(DD_BEST_HOLD_TIME), 1),
-                angles={},
                 details=["Increase room lighting", "Face the light source", "Avoid a dark background"],
-                perfect_hold=False,
-                points=[],
-                angle_texts=[],
             )
 
         landmarks = dd_detect_landmarks(frame)
         has_landmarks = landmarks is not None
-        stable_has_landmarks = dd_smooth_boolean(DD_DETECTION_HISTORY, has_landmarks)
+        stable_has_landmarks = dd_smooth_boolean(runtime.detection_history, has_landmarks)
 
         if not has_landmarks and not stable_has_landmarks:
-            dd_reset_runtime_state()
-            return dd_api_success(
+            dd_reset_runtime_state(runtime)
+            return dd_pose_success(
                 pose="Unknown",
-                model_pose="Unknown",
-                quality="N/A",
                 feedback="No human pose detected.",
                 coach_text="Show your full body clearly in the camera.",
                 status="unknown",
-                confidence=0.0,
-                score=0,
-                hold_time=0.0,
-                best_hold_time=round(float(DD_BEST_HOLD_TIME), 1),
-                angles={},
                 details=["Show your full body", "Stand where the camera can see you clearly", "Move slightly back"],
-                perfect_hold=False,
-                points=[],
-                angle_texts=[],
             )
 
         if landmarks is None:
-            dd_clear_point_history()
-            return dd_api_success(
+            dd_clear_point_history(runtime)
+            return dd_pose_success(
                 pose="Tracking...",
-                model_pose="Unknown",
-                quality="N/A",
                 feedback="Hold still while detection stabilizes.",
                 coach_text="Keep the pose steady.",
-                status="warning",
-                confidence=0.0,
-                score=0,
-                hold_time=0.0,
-                best_hold_time=round(float(DD_BEST_HOLD_TIME), 1),
-                angles={},
                 details=["Hold still", "Keep your full body in frame"],
-                perfect_hold=False,
-                points=[],
-                angle_texts=[],
             )
 
         features_df, lm_dict, _ = dd_build_feature_dataframe_from_landmarks(landmarks)
@@ -1063,15 +1287,15 @@ def process_down_dog_request(request):
         smoothed_pts = raw_pts.copy()
 
         for idx in DD_SELECTED_POINTS + DD_EXTRA_POINTS:
-            sx, sy, sz = dd_smooth_point(f"dd_{idx}", raw_pts[idx][0], raw_pts[idx][1], raw_pts[idx][2])
+            sx, sy, sz = dd_smooth_point(runtime, f"dd_{idx}", raw_pts[idx][0], raw_pts[idx][1], raw_pts[idx][2])
             smoothed_pts[idx] = [sx, sy, sz]
 
         full_body_visible, visible_count, avg_visibility = dd_check_body_visibility(lm_dict)
-        stable_full_body_visible = dd_smooth_boolean(DD_VISIBILITY_HISTORY, full_body_visible)
+        stable_full_body_visible = dd_smooth_boolean(runtime.visibility_history, full_body_visible)
         framing_feedback = dd_check_frame_position(smoothed_pts)
 
         if not full_body_visible and not stable_full_body_visible:
-            dd_reset_runtime_state()
+            dd_reset_runtime_state(runtime)
             details = [
                 "Show more of both hands and feet in frame",
                 "Keep shoulders, hips, knees, and ankles visible",
@@ -1079,39 +1303,33 @@ def process_down_dog_request(request):
             ]
             details.extend(framing_feedback)
 
-            return dd_api_success(
+            return dd_pose_success(
                 pose="Body Not Visible",
-                model_pose="Unknown",
-                quality="N/A",
                 feedback="Adjust your position so the full Down Dog shape is visible.",
                 coach_text="Show your whole Down Dog shape in the frame.",
-                status="warning",
-                confidence=0.0,
-                score=0,
-                hold_time=0.0,
-                best_hold_time=round(float(DD_BEST_HOLD_TIME), 1),
-                angles={},
                 details=dd_dedupe_list(details, max_items=3),
-                perfect_hold=False,
-                points=[],
-                angle_texts=[],
             )
 
         raw_model_label, confidence = dd_predict_model_label(features_df)
-        stable_model_label = dd_smooth_label(DD_POSE_HISTORY, raw_model_label)
+        stable_model_label = dd_smooth_label(runtime.pose_history, raw_model_label)
 
         analysis = analyze_down_dog_pose(smoothed_pts, landmarks)
+        joint_states, smoothed_checks = dd_build_joint_states(runtime, analysis)
         points = dd_build_points_for_frontend(smoothed_pts, landmarks, analysis)
         angle_texts = dd_build_angle_texts(smoothed_pts, landmarks, analysis)
 
-        is_downdog = dd_is_downdog_like(stable_model_label, confidence, analysis)
+        dd_update_stability_metrics(runtime, smoothed_pts)
+        stability_tips, stability_penalty = dd_get_stability_feedback(runtime)
 
-        if not is_downdog:
-            DD_PERFECT_HOLD_COUNT = 0
-            DD_HOLD_START = None
+        pose_eval = dd_score_down_dog_pose(analysis, smoothed_checks)
+        combined_score = max(0, pose_eval["score"] - stability_penalty)
+        stable_score = dd_smooth_score(runtime, combined_score)
+        is_downdog = dd_is_downdog_like(stable_model_label, confidence, smoothed_checks)
+        pose_flags = dd_pose_flags(smoothed_checks, stable_score, pose_eval["status"])
 
+        if not pose_flags["pose_ready"] and not is_downdog and stable_score < 75:
             tips = []
-            tips.extend(analysis.get("tips", []))
+            tips.extend(pose_eval["tips"])
             tips.extend([
                 "Lift the hips high",
                 "Straighten the arms and legs",
@@ -1119,87 +1337,48 @@ def process_down_dog_request(request):
             ])
             tips.extend(framing_feedback)
 
-            return dd_api_success(
+            return dd_pose_success(
                 pose="Not Down Dog",
                 model_pose=stable_model_label,
                 quality="Not_Ready",
-                feedback=analysis.get("main_feedback", "Move into Downward Dog position."),
-                coach_text=analysis.get("main_feedback", "Move into Downward Dog position."),
+                feedback=pose_eval["feedback"],
+                coach_text=pose_eval["coach_text"],
                 status="warning",
                 confidence=round(float(confidence), 3),
-                score=max(0, min(65, analysis.get("score", 0))),
-                hold_time=0.0,
-                best_hold_time=round(float(DD_BEST_HOLD_TIME), 1),
-                angles=analysis.get("angles", {}),
+                score=max(0, min(65, stable_score)),
+                angles=analysis["angles"],
                 details=dd_dedupe_list(tips, max_items=3),
-                perfect_hold=False,
                 points=points,
                 angle_texts=angle_texts,
+                joint_states=joint_states,
+                pose_ready=False,
+                hold_ready=False,
             )
 
-        dd_update_stability_metrics(smoothed_pts)
-        stability_tips, stability_penalty = dd_get_stability_feedback()
-
-        base_score = analysis["score"]
-        combined_score = max(0, base_score - stability_penalty)
-
-        hold_time, best_hold = dd_update_hold_state(
-            is_downdog=is_downdog,
-            full_body_visible=stable_full_body_visible,
-            low_light=low_light,
-        )
-
-        combined_score = min(100, combined_score + dd_hold_bonus(hold_time))
-        stable_score = dd_smooth_score(combined_score)
-
-        strict_visibility_ok = analysis["checks"].get("dominant_vis", 0) >= 0.62
-        both_side_ready = (
-            analysis["checks"].get("support_vis", 0) >= 0.52 and
-            analysis["checks"].get("both_side_bonus_gate", False)
-        )
-
-        if (
-            analysis["checks"].get("strict_down_dog_gate") and
-            strict_visibility_ok and
-            both_side_ready and
-            stable_score >= 98 and
-            hold_time >= 3.0
-        ):
+        if pose_flags["hold_ready"] and pose_eval["status"] == "perfect" and stable_score >= 95:
             pose_name = "Correct Down Dog"
             status = "perfect"
-            feedback_text = "Correct Down Dog"
-            coach_text = "Excellent. Hold steady."
-        elif stable_score >= 90:
+            feedback_text = pose_eval["feedback"]
+            coach_text = pose_eval["coach_text"]
+        elif pose_flags["good_pose_ready"]:
             pose_name = "Down Dog"
             status = "good"
-            feedback_text = analysis["main_feedback"]
-            coach_text = "Good shape. Refine and hold steady."
+            feedback_text = pose_eval["feedback"]
+            coach_text = pose_eval["coach_text"]
         else:
             pose_name = "Down Dog Needs Correction"
             status = "warning"
-            feedback_text = analysis["main_feedback"]
-            coach_text = "You are close. Fix the main weak point."
+            feedback_text = pose_eval["feedback"]
+            coach_text = "Fix the main weak point and keep the hips lifting."
 
-        stable_feedback = dd_smooth_feedback(feedback_text)
-
-        if (
-            pose_name == "Correct Down Dog" and
-            hold_time >= 3.2 and
-            strict_visibility_ok and
-            both_side_ready
-        ):
-            DD_PERFECT_HOLD_COUNT += 1
-        else:
-            DD_PERFECT_HOLD_COUNT = 0
+        stable_feedback = dd_smooth_feedback(runtime, feedback_text)
 
         tips = []
-        if hold_time >= 5:
-            tips.append(f"Great hold! {hold_time:.1f}s")
-        tips.extend(analysis["tips"])
+        tips.extend(pose_eval["tips"])
         tips.extend(stability_tips)
         tips.extend(framing_feedback)
 
-        return dd_api_success(
+        return dd_pose_success(
             pose=pose_name,
             model_pose=stable_model_label,
             quality=dd_quality_from_score(stable_score),
@@ -1208,13 +1387,13 @@ def process_down_dog_request(request):
             status=status,
             confidence=round(float(confidence), 3),
             score=stable_score,
-            hold_time=round(float(hold_time), 1),
-            best_hold_time=round(float(best_hold), 1),
             angles=analysis["angles"],
             details=dd_dedupe_list(tips, max_items=3, exclude=[stable_feedback, coach_text]),
-            perfect_hold=DD_PERFECT_HOLD_COUNT >= 3,
             points=points,
             angle_texts=angle_texts,
+            joint_states=joint_states,
+            pose_ready=pose_flags["pose_ready"] or is_downdog,
+            hold_ready=pose_flags["hold_ready"],
         )
 
     except Exception as e:
