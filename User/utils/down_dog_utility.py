@@ -42,7 +42,7 @@ DD_CORE_SHAPE_READY_MIN = 4
 DD_DETAIL_SHAPE_READY_MIN = 2
 DD_DEGREE_SIGN = chr(176)
 
-DD_SESSION_RUNTIMES = {}
+DD_SESSION_RUNTIME_KEY = "down_dog_runtime_v1"
 
 
 @dataclass
@@ -58,6 +58,56 @@ class DownDogRuntime:
     detection_history: deque = field(default_factory=lambda: deque(maxlen=DD_DETECTION_HISTORY_SIZE))
     point_history: dict = field(default_factory=dict)
     boolean_histories: dict = field(default_factory=dict)
+
+
+def dd_runtime_to_session_data(runtime):
+    return {
+        "pose_history": list(runtime.pose_history),
+        "score_history": list(runtime.score_history),
+        "feedback_history": list(runtime.feedback_history),
+        "hip_center_history": list(runtime.hip_center_history),
+        "shoulder_center_history": list(runtime.shoulder_center_history),
+        "hip_height_history": list(runtime.hip_height_history),
+        "spine_line_history": list(runtime.spine_line_history),
+        "visibility_history": list(runtime.visibility_history),
+        "detection_history": list(runtime.detection_history),
+        "point_history": {
+            str(key): [[float(x), float(y), float(z)] for x, y, z in points]
+            for key, points in runtime.point_history.items()
+        },
+        "boolean_histories": {
+            str(key): [bool(value) for value in values]
+            for key, values in runtime.boolean_histories.items()
+        },
+    }
+
+
+def dd_runtime_from_session_data(data):
+    runtime = DownDogRuntime()
+    if not isinstance(data, dict):
+        return runtime
+
+    runtime.pose_history = deque(data.get("pose_history", []), maxlen=DD_POSE_HISTORY_SIZE)
+    runtime.score_history = deque(data.get("score_history", []), maxlen=DD_SCORE_HISTORY_SIZE)
+    runtime.feedback_history = deque(data.get("feedback_history", []), maxlen=DD_FEEDBACK_HISTORY_SIZE)
+    runtime.hip_center_history = deque(data.get("hip_center_history", []), maxlen=DD_STABILITY_HISTORY_SIZE)
+    runtime.shoulder_center_history = deque(data.get("shoulder_center_history", []), maxlen=DD_STABILITY_HISTORY_SIZE)
+    runtime.hip_height_history = deque(data.get("hip_height_history", []), maxlen=DD_STABILITY_HISTORY_SIZE)
+    runtime.spine_line_history = deque(data.get("spine_line_history", []), maxlen=DD_STABILITY_HISTORY_SIZE)
+    runtime.visibility_history = deque(data.get("visibility_history", []), maxlen=DD_VISIBILITY_HISTORY_SIZE)
+    runtime.detection_history = deque(data.get("detection_history", []), maxlen=DD_DETECTION_HISTORY_SIZE)
+    runtime.point_history = {
+        str(key): deque(
+            [(float(x), float(y), float(z)) for x, y, z in values],
+            maxlen=DD_POINT_HISTORY_SIZE,
+        )
+        for key, values in data.get("point_history", {}).items()
+    }
+    runtime.boolean_histories = {
+        str(key): deque([bool(value) for value in values], maxlen=DD_BOOLEAN_HISTORY_SIZE)
+        for key, values in data.get("boolean_histories", {}).items()
+    }
+    return runtime
 
 
 # =========================================================
@@ -235,12 +285,14 @@ def dd_get_runtime(request):
     if request.session.session_key is None:
         request.session.save()
 
-    session_key = request.session.session_key
-    runtime = DD_SESSION_RUNTIMES.get(session_key)
-    if runtime is None:
-        runtime = DownDogRuntime()
-        DD_SESSION_RUNTIMES[session_key] = runtime
-    return runtime
+    return dd_runtime_from_session_data(request.session.get(DD_SESSION_RUNTIME_KEY))
+
+
+def dd_store_runtime(request, runtime):
+    if request.session.session_key is None:
+        request.session.save()
+    request.session[DD_SESSION_RUNTIME_KEY] = dd_runtime_to_session_data(runtime)
+    request.session.modified = True
 
 
 # =========================================================
@@ -1233,6 +1285,7 @@ def dd_pose_success(**kwargs):
 # MAIN PROCESS
 # =========================================================
 def process_down_dog_request(request):
+    runtime = None
     try:
         runtime = dd_get_runtime(request)
 
@@ -1405,3 +1458,6 @@ def process_down_dog_request(request):
             "error": str(e),
             "error_type": type(e).__name__,
         }, status=500)
+    finally:
+        if runtime is not None:
+            dd_store_runtime(request, runtime)

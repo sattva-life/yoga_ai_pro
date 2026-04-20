@@ -137,6 +137,7 @@ class DownDogUtilityTests(TestCase):
         runtime.feedback_history.append("Hold steady")
         runtime.point_history["dd_13"] = [(0.1, 0.1, 0.0)]
         runtime.boolean_histories["left_elbow_ok"] = [True, False]
+        dd.dd_store_runtime(request, runtime)
 
         frame = np.zeros((6, 6, 3), dtype=np.uint8)
 
@@ -146,6 +147,7 @@ class DownDogUtilityTests(TestCase):
             response = dd.process_down_dog_request(request)
 
         data = self.parse_json(response)
+        runtime = dd.dd_get_runtime(request)
         self.assertEqual(data["pose"], "Low Light")
         self.assertEqual(data["hold_time"], 0.0)
         self.assertEqual(data["best_hold_time"], 0.0)
@@ -371,6 +373,7 @@ class GoddessUtilityTests(TestCase):
         runtime.feedback_history.append("Hold steady")
         runtime.point_history["goddess_25"] = [(0.1, 0.1, 0.0)]
         runtime.boolean_histories["left_knee_bent"] = [True, False]
+        gd.goddess_store_runtime(request, runtime)
 
         frame = np.zeros((6, 6, 3), dtype=np.uint8)
 
@@ -379,6 +382,7 @@ class GoddessUtilityTests(TestCase):
             response = gd.process_goddess_pose_request(request)
 
         data = self.parse_json(response)
+        runtime = gd.goddess_get_runtime(request)
         self.assertEqual(data["pose"], "Low Light")
         self.assertEqual(data["hold_time"], 0.0)
         self.assertEqual(data["best_hold_time"], 0.0)

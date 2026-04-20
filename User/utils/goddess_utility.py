@@ -47,7 +47,7 @@ GODDESS_PRAYER_CHEST_DISTANCE_MAX_RATIO = 0.88
 GODDESS_PRAYER_BALANCE_MAX_RATIO = 0.24
 GODDESS_PRAYER_ELBOW_MAX_ANGLE = 165.0
 
-GODDESS_SESSION_RUNTIMES = {}
+GODDESS_SESSION_RUNTIME_KEY = "goddess_runtime_v1"
 
 
 @dataclass
@@ -62,6 +62,54 @@ class GoddessRuntime:
     visibility_history: deque = field(default_factory=lambda: deque(maxlen=GODDESS_VISIBILITY_HISTORY_SIZE))
     point_history: dict = field(default_factory=dict)
     boolean_histories: dict = field(default_factory=dict)
+
+
+def goddess_runtime_to_session_data(runtime):
+    return {
+        "pose_history": list(runtime.pose_history),
+        "defect_history": list(runtime.defect_history),
+        "score_history": list(runtime.score_history),
+        "feedback_history": list(runtime.feedback_history),
+        "torso_center_history": list(runtime.torso_center_history),
+        "shoulder_tilt_history": list(runtime.shoulder_tilt_history),
+        "detection_history": list(runtime.detection_history),
+        "visibility_history": list(runtime.visibility_history),
+        "point_history": {
+            str(key): [[float(x), float(y), float(z)] for x, y, z in points]
+            for key, points in runtime.point_history.items()
+        },
+        "boolean_histories": {
+            str(key): [bool(value) for value in values]
+            for key, values in runtime.boolean_histories.items()
+        },
+    }
+
+
+def goddess_runtime_from_session_data(data):
+    runtime = GoddessRuntime()
+    if not isinstance(data, dict):
+        return runtime
+
+    runtime.pose_history = deque(data.get("pose_history", []), maxlen=GODDESS_POSE_HISTORY_SIZE)
+    runtime.defect_history = deque(data.get("defect_history", []), maxlen=GODDESS_DEFECT_HISTORY_SIZE)
+    runtime.score_history = deque(data.get("score_history", []), maxlen=GODDESS_SCORE_HISTORY_SIZE)
+    runtime.feedback_history = deque(data.get("feedback_history", []), maxlen=GODDESS_FEEDBACK_HISTORY_SIZE)
+    runtime.torso_center_history = deque(data.get("torso_center_history", []), maxlen=GODDESS_STABILITY_HISTORY_SIZE)
+    runtime.shoulder_tilt_history = deque(data.get("shoulder_tilt_history", []), maxlen=GODDESS_STABILITY_HISTORY_SIZE)
+    runtime.detection_history = deque(data.get("detection_history", []), maxlen=GODDESS_DETECTION_HISTORY_SIZE)
+    runtime.visibility_history = deque(data.get("visibility_history", []), maxlen=GODDESS_VISIBILITY_HISTORY_SIZE)
+    runtime.point_history = {
+        str(key): deque(
+            [(float(x), float(y), float(z)) for x, y, z in values],
+            maxlen=GODDESS_POINT_HISTORY_SIZE,
+        )
+        for key, values in data.get("point_history", {}).items()
+    }
+    runtime.boolean_histories = {
+        str(key): deque([bool(value) for value in values], maxlen=GODDESS_BOOLEAN_HISTORY_SIZE)
+        for key, values in data.get("boolean_histories", {}).items()
+    }
+    return runtime
 
 # =========================================================
 # SAFE PATH / MODEL LOAD
@@ -190,17 +238,17 @@ def goddess_get_runtime(request):
     if request.session.session_key is None:
         request.session.save()
 
-    session_key = request.session.session_key
-    runtime = GODDESS_SESSION_RUNTIMES.get(session_key)
-    if runtime is None:
-        runtime = GoddessRuntime()
-        GODDESS_SESSION_RUNTIMES[session_key] = runtime
-    return runtime
+    return goddess_runtime_from_session_data(request.session.get(GODDESS_SESSION_RUNTIME_KEY))
+
+
+def goddess_store_runtime(request, runtime):
+    if request.session.session_key is None:
+        request.session.save()
+    request.session[GODDESS_SESSION_RUNTIME_KEY] = goddess_runtime_to_session_data(runtime)
+    request.session.modified = True
 
 def reset_runtime_state(runtime=None):
     if runtime is None:
-        for existing_runtime in GODDESS_SESSION_RUNTIMES.values():
-            reset_runtime_state(existing_runtime)
         return
 
     runtime.pose_history.clear()
@@ -979,6 +1027,7 @@ def build_angle_texts(raw_pts, landmarks, analysis):
 # MAIN API PROCESS
 # =========================================================
 def process_goddess_pose_request(request):
+    runtime = None
     try:
         runtime = goddess_get_runtime(request)
 
@@ -1138,3 +1187,6 @@ def process_goddess_pose_request(request):
         import traceback
         traceback.print_exc()
         return api_error(str(e), status=500)
+    finally:
+        if runtime is not None:
+            goddess_store_runtime(request, runtime)

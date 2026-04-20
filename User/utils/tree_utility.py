@@ -31,6 +31,7 @@ POINT_HISTORY = {}
 POINT_HISTORY_SIZE = 7
 BOOLEAN_HISTORY = {}
 BOOLEAN_HISTORY_SIZE = 5
+TREE_SESSION_RUNTIME_KEY = "tree_runtime_v1"
 
 
 # =========================================================
@@ -222,6 +223,69 @@ def reset_tree_runtime_state():
     TREE_HOLD_START = None
     BEST_HOLD_TIME = 0.0
     PERFECT_HOLD_COUNT = 0
+
+
+def tree_runtime_to_session_data():
+    return {
+        "pose_history": list(POSE_HISTORY),
+        "defect_history": list(DEFECT_HISTORY),
+        "score_history": list(SCORE_HISTORY),
+        "feedback_history": list(FEEDBACK_HISTORY),
+        "torso_center_history": list(TORSO_CENTER_HISTORY),
+        "shoulder_tilt_history": list(SHOULDER_TILT_HISTORY),
+        "torso_lean_history": list(TORSO_LEAN_HISTORY),
+        "tree_hold_start": TREE_HOLD_START,
+        "best_hold_time": float(BEST_HOLD_TIME),
+        "perfect_hold_count": int(PERFECT_HOLD_COUNT),
+        "point_history": {
+            str(key): [[float(x), float(y)] for x, y in points]
+            for key, points in POINT_HISTORY.items()
+        },
+        "boolean_history": {
+            str(key): [bool(value) for value in values]
+            for key, values in BOOLEAN_HISTORY.items()
+        },
+    }
+
+
+def load_tree_runtime_state(request):
+    global TREE_HOLD_START, BEST_HOLD_TIME, PERFECT_HOLD_COUNT
+
+    if request.session.session_key is None:
+        request.session.save()
+
+    data = request.session.get(TREE_SESSION_RUNTIME_KEY, {})
+    reset_tree_runtime_state()
+
+    if not isinstance(data, dict):
+        return
+
+    POSE_HISTORY.extend(data.get("pose_history", []))
+    DEFECT_HISTORY.extend(data.get("defect_history", []))
+    SCORE_HISTORY.extend(data.get("score_history", []))
+    FEEDBACK_HISTORY.extend(data.get("feedback_history", []))
+    TORSO_CENTER_HISTORY.extend(data.get("torso_center_history", []))
+    SHOULDER_TILT_HISTORY.extend(data.get("shoulder_tilt_history", []))
+    TORSO_LEAN_HISTORY.extend(data.get("torso_lean_history", []))
+    TREE_HOLD_START = data.get("tree_hold_start")
+    BEST_HOLD_TIME = float(data.get("best_hold_time", 0.0) or 0.0)
+    PERFECT_HOLD_COUNT = int(data.get("perfect_hold_count", 0) or 0)
+
+    POINT_HISTORY.update({
+        str(key): deque([(float(x), float(y)) for x, y in values], maxlen=POINT_HISTORY_SIZE)
+        for key, values in data.get("point_history", {}).items()
+    })
+    BOOLEAN_HISTORY.update({
+        str(key): deque([bool(value) for value in values], maxlen=BOOLEAN_HISTORY_SIZE)
+        for key, values in data.get("boolean_history", {}).items()
+    })
+
+
+def save_tree_runtime_state(request):
+    if request.session.session_key is None:
+        request.session.save()
+    request.session[TREE_SESSION_RUNTIME_KEY] = tree_runtime_to_session_data()
+    request.session.modified = True
 
 
 # =========================================================
@@ -1090,6 +1154,8 @@ def process_yoga_pose_request(request):
     global TREE_HOLD_START, PERFECT_HOLD_COUNT
 
     try:
+        load_tree_runtime_state(request)
+
         if request.POST.get("reset") == "true":
             reset_tree_runtime_state()
 
@@ -1303,3 +1369,5 @@ def process_yoga_pose_request(request):
     except Exception as e:
         print("predict_yoga_pose error:", str(e))
         return api_error(str(e), status=500)
+    finally:
+        save_tree_runtime_state(request)
