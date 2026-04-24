@@ -11,6 +11,7 @@ from django.test import TestCase
 from User.utils import down_dog_utility as dd
 from User.utils import goddess_utility as gd
 from User.utils import tree_utility as tr
+from User.utils import warrior_utility as wr
 
 
 class DownDogUtilityTests(TestCase):
@@ -41,6 +42,23 @@ class DownDogUtilityTests(TestCase):
             SimpleNamespace(x=0.5, y=0.5, z=0.0, visibility=visibility)
             for _ in range(33)
         ]
+
+    def make_down_dog_landmarks_for_points(self, dominant_side="left", support_visible=True):
+        landmarks = self.make_fake_landmarks()
+        for index in range(33):
+            landmarks[index].x = 0.40 + (index % 3) * 0.05
+            landmarks[index].y = 0.20 + (index % 5) * 0.08
+
+        support_indexes = (
+            [dd.DD_RIGHT_SHOULDER, dd.DD_RIGHT_ELBOW, dd.DD_RIGHT_WRIST, dd.DD_RIGHT_HIP, dd.DD_RIGHT_KNEE, dd.DD_RIGHT_ANKLE]
+            if dominant_side == "left" else
+            [dd.DD_LEFT_SHOULDER, dd.DD_LEFT_ELBOW, dd.DD_LEFT_WRIST, dd.DD_LEFT_HIP, dd.DD_LEFT_KNEE, dd.DD_LEFT_ANKLE]
+        )
+
+        for idx in support_indexes:
+            landmarks[idx].visibility = 0.92 if support_visible else 0.20
+
+        return landmarks
 
     def build_analysis(self, left_elbow_ok=True, dominant_leg_straight=True, spine_long=True, head_between_arms=True):
         core_shape_count = sum([
@@ -209,6 +227,25 @@ class DownDogUtilityTests(TestCase):
         self.assertTrue(items)
         self.assertTrue(all("joint_key" in item for item in items))
         self.assertTrue(all("Â" not in item["text"] for item in items))
+
+    def test_down_dog_points_skip_extra_foot_clutter_and_hidden_support_side(self):
+        raw_pts = np.zeros((33, 3), dtype=np.float32)
+        for idx in range(33):
+            raw_pts[idx] = [0.35 + (idx % 4) * 0.08, 0.20 + (idx % 6) * 0.09, 0.0]
+
+        landmarks = self.make_down_dog_landmarks_for_points(dominant_side="left", support_visible=False)
+        analysis = self.build_analysis()
+        analysis["support_vis"] = 0.18
+
+        points = dd.dd_build_points_for_frontend(raw_pts, landmarks, analysis)
+        names = {point["name"] for point in points}
+
+        self.assertNotIn("left_heel", names)
+        self.assertNotIn("right_heel", names)
+        self.assertNotIn("left_foot_index", names)
+        self.assertNotIn("right_foot_index", names)
+        self.assertNotIn("right_elbow", names)
+        self.assertNotIn("right_knee", names)
 
     def test_down_dog_pose_flags_hold_only_when_ready(self):
         analysis = self.build_analysis()
@@ -690,3 +727,129 @@ class TreeUtilityTests(TestCase):
 
         self.assertNotIn("Step", analysis["main_feedback"])
         self.assertTrue(analysis["coach_text"])
+
+
+class WarriorUtilityTests(TestCase):
+    def build_request(self):
+        request = SimpleNamespace(
+            POST={},
+            FILES={
+                "image": SimpleUploadedFile(
+                    "frame.jpg",
+                    b"fake-image-bytes",
+                    content_type="image/jpeg",
+                )
+            },
+            COOKIES={},
+            session={},
+        )
+
+        middleware = SessionMiddleware(lambda req: None)
+        middleware.process_request(request)
+        request.session.save()
+        return request
+
+    def parse_json(self, response):
+        return json.loads(response.content.decode("utf-8"))
+
+    def make_fake_landmarks(self, visibility=0.95):
+        return [
+            SimpleNamespace(x=0.5, y=0.5, z=0.0, visibility=visibility)
+            for _ in range(33)
+        ]
+
+    def build_analysis(self, front_side="left", arms_level=True, front_knee_bent=True, back_leg_soft=True):
+        return {
+            "score": 96 if arms_level and front_knee_bent and back_leg_soft else 78,
+            "status": "perfect" if arms_level and front_knee_bent and back_leg_soft else "good",
+            "main_feedback": "Perfect Warrior! Hold steady." if arms_level and front_knee_bent and back_leg_soft else "Refine your Warrior II.",
+            "tips": ["Keep your gaze soft over the front fingertips"],
+            "angles": {
+                "left_knee_angle": 104.0,
+                "right_knee_angle": 168.0,
+                "left_elbow_angle": 174.0,
+                "right_elbow_angle": 173.0,
+            },
+            "checks": {
+                "front_side": front_side,
+                "stance_ratio": 1.58,
+                "stance_wide_enough": True,
+                "stance_ideal": True,
+                "front_knee_bent": front_knee_bent,
+                "front_knee_ideal": True,
+                "back_leg_soft": back_leg_soft,
+                "back_leg_straight": True,
+                "arms_reaching": True,
+                "arms_level": arms_level,
+                "torso_centered": True,
+                "front_knee_over_ankle": True,
+                "core_warrior_gate": front_knee_bent and back_leg_soft,
+                "balanced_warrior_gate": arms_level and front_knee_bent and back_leg_soft,
+            },
+        }
+
+    def test_warrior_reset_clears_runtime_histories_on_low_light(self):
+        request = self.build_request()
+        runtime = wr.wr_get_runtime(request)
+        runtime.pose_history.append("Warrior Pose")
+        runtime.score_history.append(92.0)
+        runtime.feedback_history.append("Hold steady")
+        runtime.point_history["wr_25"] = [(0.1, 0.2, 0.0)]
+        runtime.hold_start = 123.0
+        runtime.best_hold_time = 7.2
+        runtime.perfect_hold_count = 2
+        wr.wr_store_runtime(request, runtime)
+
+        frame = np.zeros((6, 6, 3), dtype=np.uint8)
+
+        with patch.object(wr, "wr_read_uploaded_image", return_value=frame), \
+             patch.object(wr, "wr_enhance_frame", return_value=frame), \
+             patch.object(wr, "wr_check_lighting", return_value=(True, 12.0)):
+            response = wr.process_warrior_pose_request(request)
+
+        data = self.parse_json(response)
+        runtime = wr.wr_get_runtime(request)
+        self.assertEqual(data["pose"], "Low Light")
+        self.assertEqual(data["hold_time"], 0.0)
+        self.assertEqual(data["best_hold_time"], 0.0)
+        self.assertEqual(len(runtime.pose_history), 0)
+        self.assertEqual(len(runtime.score_history), 0)
+        self.assertEqual(len(runtime.feedback_history), 0)
+        self.assertEqual(runtime.point_history, {})
+        self.assertEqual(runtime.best_hold_time, 0.0)
+        self.assertEqual(runtime.perfect_hold_count, 0)
+
+    def test_warrior_angle_texts_use_clean_degree_symbol(self):
+        raw_pts = np.zeros((33, 3), dtype=np.float32)
+        landmarks = self.make_fake_landmarks()
+        analysis = self.build_analysis()
+
+        items = wr.wr_build_angle_texts(raw_pts, landmarks, analysis)
+
+        self.assertTrue(items)
+        self.assertTrue(all("Â" not in item["text"] for item in items))
+        self.assertTrue(all(wr.WR_DEGREE_SIGN in item["text"] for item in items))
+
+    def test_warrior_points_keep_recently_visible_joint_markers(self):
+        runtime = wr.WarriorRuntime()
+        runtime.point_history["wr_25"] = [(0.2, 0.6, 0.0)]
+
+        raw_pts = np.zeros((33, 3), dtype=np.float32)
+        for idx in range(33):
+            raw_pts[idx] = [0.35 + (idx % 4) * 0.08, 0.20 + (idx % 5) * 0.09, 0.0]
+
+        landmarks = self.make_fake_landmarks()
+        landmarks[wr.WR_LEFT_KNEE].visibility = 0.05
+
+        points = wr.wr_build_points_for_frontend(runtime, raw_pts, landmarks, self.build_analysis(front_side="left"))
+        names = {point["name"] for point in points}
+
+        self.assertIn("left_knee", names)
+
+    def test_warrior_pose_flags_allow_hold_ready_for_balanced_pose(self):
+        analysis = self.build_analysis()
+        flags = wr.wr_pose_flags(analysis["checks"], stable_score=96, pose_status=analysis["status"])
+
+        self.assertTrue(flags["pose_ready"])
+        self.assertTrue(flags["good_pose_ready"])
+        self.assertTrue(flags["hold_ready"])

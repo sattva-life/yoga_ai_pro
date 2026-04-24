@@ -59,6 +59,19 @@
     .animate-slow-bounce {
         animation: slowBounce 6s ease-in-out infinite;
     }
+
+    @keyframes shrinkBar {
+        from {
+            transform: scaleX(1);
+        }
+        to {
+            transform: scaleX(0);
+        }
+    }
+
+    [x-cloak] {
+        display: none !important;
+    }
 </style>
 </head>
 
@@ -97,15 +110,37 @@
                 About
             </a>
 
+            {% if current_user %}
+            <a href="{% url 'User:home_page' %}"
+               class="relative text-[#444] transition-all duration-300 hover:text-[#D96C7A] after:absolute after:left-0 after:-bottom-1 after:h-[2px] after:w-0 after:bg-[#D96C7A] after:transition-all after:duration-300 hover:after:w-full">
+                Dashboard
+            </a>
+
+            <a href="{% url 'Guest:logout' %}"
+               class="inline-flex items-center justify-center rounded-full bg-white border border-[#E8C7CD] px-5 py-2.5 text-[#D96C7A] transition-all duration-300 hover:bg-[#FDF1F3] hover:-translate-y-0.5 hover:shadow-md active:scale-95">
+                Logout
+            </a>
+            {% elif current_admin %}
+            <a href="{% url 'Administrator:dashboard' %}"
+               class="relative text-[#444] transition-all duration-300 hover:text-[#D96C7A] after:absolute after:left-0 after:-bottom-1 after:h-[2px] after:w-0 after:bg-[#D96C7A] after:transition-all after:duration-300 hover:after:w-full">
+                Admin Panel
+            </a>
+
+            <a href="{% url 'Administrator:logout' %}"
+               class="inline-flex items-center justify-center rounded-full bg-white border border-[#E8C7CD] px-5 py-2.5 text-[#D96C7A] transition-all duration-300 hover:bg-[#FDF1F3] hover:-translate-y-0.5 hover:shadow-md active:scale-95">
+                Logout
+            </a>
+            {% else %}
             <a href="{% url 'Guest:login' %}"
                class="relative text-[#444] transition-all duration-300 hover:text-[#D96C7A] after:absolute after:left-0 after:-bottom-1 after:h-[2px] after:w-0 after:bg-[#D96C7A] after:transition-all after:duration-300 hover:after:w-full">
                 Login
             </a>
 
-            <a href="#"
+            <a href="{% url 'Guest:signup' %}"
                class="inline-flex items-center justify-center rounded-full bg-white border border-[#E8C7CD] px-5 py-2.5 text-[#D96C7A] transition-all duration-300 hover:bg-[#FDF1F3] hover:-translate-y-0.5 hover:shadow-md active:scale-95">
                 Sign Up
             </a>
+            {% endif %}
 
             <a href="https://sattvalife.yoga/" target="_blank"
                class="inline-flex items-center justify-center rounded-full bg-gradient-to-r from-[#E88490] to-[#D96C7A] px-5 py-2.5 text-white shadow-lg shadow-[#E88490]/20 transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.02] hover:shadow-xl hover:shadow-[#E88490]/30 active:scale-95">
@@ -152,15 +187,37 @@
                 About
             </a>
 
+            {% if current_user %}
+            <a href="{% url 'User:home_page' %}"
+               class="text-[#444] transition-all duration-300 hover:text-[#D96C7A] hover:translate-x-1">
+                Dashboard
+            </a>
+
+            <a href="{% url 'Guest:logout' %}"
+               class="rounded-full border border-[#E8C7CD] px-5 py-2.5 text-[#D96C7A] text-center transition-all duration-300 hover:bg-[#FDF1F3] hover:-translate-y-0.5 active:scale-95">
+                Logout
+            </a>
+            {% elif current_admin %}
+            <a href="{% url 'Administrator:dashboard' %}"
+               class="text-[#444] transition-all duration-300 hover:text-[#D96C7A] hover:translate-x-1">
+                Admin Panel
+            </a>
+
+            <a href="{% url 'Administrator:logout' %}"
+               class="rounded-full border border-[#E8C7CD] px-5 py-2.5 text-[#D96C7A] text-center transition-all duration-300 hover:bg-[#FDF1F3] hover:-translate-y-0.5 active:scale-95">
+                Logout
+            </a>
+            {% else %}
             <a href="{% url 'Guest:login' %}"
                class="text-[#444] transition-all duration-300 hover:text-[#D96C7A] hover:translate-x-1">
                 Login
             </a>
 
-            <a href="#"
+            <a href="{% url 'Guest:signup' %}"
                class="rounded-full border border-[#E8C7CD] px-5 py-2.5 text-[#D96C7A] text-center transition-all duration-300 hover:bg-[#FDF1F3] hover:-translate-y-0.5 active:scale-95">
                 Sign Up
             </a>
+            {% endif %}
 
             <a href="https://sattvalife.yoga/" target="_blank"
                class="rounded-full bg-gradient-to-r from-[#E88490] to-[#D96C7A] px-5 py-2.5 text-white text-center shadow-lg shadow-[#E88490]/20 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl active:scale-95">
@@ -171,6 +228,97 @@
 
 </nav>
 {% endblock %}
+
+    {% if messages %}
+    <div class="fixed top-24 right-4 z-[70] w-[calc(100%-2rem)] max-w-md space-y-3">
+        {% for message in messages %}
+        <div
+            x-data="{ show: true }"
+            x-init="setTimeout(() => show = false, 3800)"
+            x-show="show"
+            x-cloak
+            x-transition:enter="transition ease-out duration-300"
+            x-transition:enter-start="opacity-0 translate-y-2 scale-[0.98]"
+            x-transition:enter-end="opacity-100 translate-y-0 scale-100"
+            x-transition:leave="transition ease-in duration-250"
+            x-transition:leave-start="opacity-100 translate-y-0 scale-100"
+            x-transition:leave-end="opacity-0 -translate-y-2 scale-[0.98]"
+            class="overflow-hidden rounded-2xl border bg-white/92 shadow-[0_18px_40px_rgba(17,17,17,0.12)] backdrop-blur-md"
+            {% if "success" in message.tags %}
+            style="border-color: rgba(74, 222, 128, 0.35);"
+            {% elif "error" in message.tags %}
+            style="border-color: rgba(251, 113, 133, 0.35);"
+            {% else %}
+            style="border-color: rgba(232, 132, 144, 0.28);"
+            {% endif %}
+        >
+            <div class="flex items-start gap-3 px-4 py-3 text-sm text-[#4F4A4C]">
+                <div
+                    class="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white"
+                    {% if "success" in message.tags %}
+                    style="background: linear-gradient(135deg, #34d399, #10b981);"
+                    {% elif "error" in message.tags %}
+                    style="background: linear-gradient(135deg, #fb7185, #ef4444);"
+                    {% else %}
+                    style="background: linear-gradient(135deg, #f59e0b, #f97316);"
+                    {% endif %}
+                >
+                    {% if "success" in message.tags %}
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                    </svg>
+                    {% elif "error" in message.tags %}
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                    {% else %}
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01"></path>
+                    </svg>
+                    {% endif %}
+                </div>
+
+                <div class="min-w-0 flex-1">
+                    <div class="font-semibold text-[#1F1B1C]">
+                        {% if "success" in message.tags %}
+                        Success
+                        {% elif "error" in message.tags %}
+                        Error
+                        {% else %}
+                        Notice
+                        {% endif %}
+                    </div>
+                    <div class="mt-1 leading-relaxed">{{ message }}</div>
+                </div>
+
+                <button
+                    type="button"
+                    @click="show = false"
+                    class="shrink-0 rounded-full p-1 text-[#8B8386] transition hover:bg-[#F8EDEE] hover:text-[#5B5557]"
+                    aria-label="Close notification"
+                >
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+
+            <div class="h-1 w-full overflow-hidden bg-[#F8ECEE]">
+                <div
+                    class="h-full origin-left"
+                    {% if "success" in message.tags %}
+                    style="background: linear-gradient(90deg, #34d399, #10b981); animation: shrinkBar 3.8s linear forwards;"
+                    {% elif "error" in message.tags %}
+                    style="background: linear-gradient(90deg, #fb7185, #ef4444); animation: shrinkBar 3.8s linear forwards;"
+                    {% else %}
+                    style="background: linear-gradient(90deg, #f59e0b, #f97316); animation: shrinkBar 3.8s linear forwards;"
+                    {% endif %}
+                ></div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
 
     <main class="min-h-screen">
         {% block content %}{% endblock %}

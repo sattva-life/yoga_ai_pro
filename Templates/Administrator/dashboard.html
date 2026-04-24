@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+{% load static %}
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Administrator Panel | SattvaLife Yoga</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: "Poppins", sans-serif;
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(232,132,144,0.16),_transparent_28%),linear-gradient(180deg,_#fff7f8_0%,_#fffefe_100%)] text-[#1E1A1B]">
+    <div class="mx-auto min-h-screen max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <header class="mb-8 flex flex-col gap-4 rounded-[2rem] border border-white/80 bg-white/88 px-6 py-6 shadow-[0_24px_60px_-14px_rgba(17,17,17,0.16)] backdrop-blur-xl md:flex-row md:items-center md:justify-between">
+            <div class="flex items-center gap-4">
+                <img src="{% static 'sly-logo-spaces.png' %}" alt="SattvaLife Yoga Logo" class="h-14 w-auto object-contain">
+                <div>
+                    <p class="text-xs font-semibold uppercase tracking-[0.32em] text-[#D96C7A]">Administrator</p>
+                    <h1 class="text-3xl font-bold text-[#181818]">Registration Approval Panel</h1>
+                    <p class="mt-1 text-sm text-[#6D6568]">Review registered users, approve access, or reject applications.</p>
+                </div>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-3">
+                <a href="{% url 'Guest:landing' %}" class="inline-flex items-center justify-center rounded-full border border-[#E8C7CD] bg-white px-5 py-2.5 text-sm font-medium text-[#D96C7A] transition-all duration-300 hover:bg-[#FDF1F3]">
+                    View Website
+                </a>
+                <a href="{% url 'Administrator:logout' %}" class="inline-flex items-center justify-center rounded-full bg-gradient-to-r from-[#E88490] to-[#D96C7A] px-5 py-2.5 text-sm font-medium text-white shadow-lg shadow-[#E88490]/20 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl">
+                    Logout
+                </a>
+            </div>
+        </header>
+
+        {% if messages %}
+        <section class="mb-6 space-y-3">
+            {% for message in messages %}
+            <div class="rounded-2xl border px-4 py-3 text-sm {% if 'error' in message.tags %}border-[#F7C5CF] bg-[#FFF0F3] text-[#8E3648]{% elif 'success' in message.tags %}border-[#BCE8CA] bg-[#F2FFF7] text-[#236241]{% else %}border-[#F0D6DB] bg-[#FFF8F8] text-[#6D6568]{% endif %}">
+                {{ message }}
+            </div>
+            {% endfor %}
+        </section>
+        {% endif %}
+
+        <section class="mb-8 grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div class="rounded-[1.75rem] border border-[#F0D9DE] bg-white px-6 py-5 shadow-sm">
+                <p class="text-sm font-medium text-[#8A8083]">Pending</p>
+                <p class="mt-2 text-4xl font-bold text-[#181818]">{{ pending_count }}</p>
+            </div>
+            <div class="rounded-[1.75rem] border border-[#D8EEDA] bg-white px-6 py-5 shadow-sm">
+                <p class="text-sm font-medium text-[#6E7E71]">Accepted</p>
+                <p class="mt-2 text-4xl font-bold text-[#181818]">{{ accepted_count }}</p>
+            </div>
+            <div class="rounded-[1.75rem] border border-[#F0D9DE] bg-white px-6 py-5 shadow-sm">
+                <p class="text-sm font-medium text-[#8A8083]">Rejected</p>
+                <p class="mt-2 text-4xl font-bold text-[#181818]">{{ rejected_count }}</p>
+            </div>
+        </section>
+
+        <section class="overflow-hidden rounded-[2rem] border border-white/80 bg-white/90 shadow-[0_24px_60px_-18px_rgba(17,17,17,0.16)] backdrop-blur-xl">
+            <div class="border-b border-[#F4E6E9] px-6 py-5">
+                <h2 class="text-xl font-semibold text-[#181818]">Registered Users</h2>
+                <p class="mt-1 text-sm text-[#6D6568]">Status values: `0 = Pending`, `1 = Accepted`, `2 = Rejected`.</p>
+            </div>
+
+            {% if users %}
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-[#F4E6E9]">
+                    <thead class="bg-[#FFF8F8]">
+                        <tr class="text-left text-xs font-semibold uppercase tracking-[0.2em] text-[#8A8083]">
+                            <th class="px-6 py-4">User</th>
+                            <th class="px-6 py-4">Email</th>
+                            <th class="px-6 py-4">Address</th>
+                            <th class="px-6 py-4">Status</th>
+                            <th class="px-6 py-4">Registered</th>
+                            <th class="px-6 py-4 text-right">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-[#F8ECEE]">
+                        {% for user in users %}
+                        <tr class="align-top">
+                            <td class="px-6 py-5">
+                                <div class="flex items-center gap-4">
+                                    {% if user.photo %}
+                                    <img src="{{ user.photo.url }}" alt="{{ user.name }}" class="h-14 w-14 rounded-2xl object-cover">
+                                    {% else %}
+                                    <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#FCECEF] text-lg font-semibold text-[#D96C7A]">
+                                        {{ user.name|slice:":1" }}
+                                    </div>
+                                    {% endif %}
+                                    <div>
+                                        <p class="font-semibold text-[#181818]">{{ user.name }}</p>
+                                        <p class="text-sm text-[#8A8083]">ID {{ user.id }}</p>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="px-6 py-5 text-sm text-[#5E585A]">{{ user.email }}</td>
+                            <td class="px-6 py-5 text-sm text-[#5E585A]">{{ user.address }}</td>
+                            <td class="px-6 py-5">
+                                <span class="inline-flex rounded-full px-3 py-1 text-xs font-semibold {% if user.status == 0 %}bg-[#FFF0F3] text-[#A8485D]{% elif user.status == 1 %}bg-[#ECFFF2] text-[#236241]{% else %}bg-[#F5F1F2] text-[#7B6F73]{% endif %}">
+                                    {{ user.get_status_display }} ({{ user.status }})
+                                </span>
+                            </td>
+                            <td class="px-6 py-5 text-sm text-[#5E585A]">{{ user.created_at|date:"M d, Y h:i A" }}</td>
+                            <td class="px-6 py-5">
+                                <div class="flex justify-end gap-3">
+                                    <form method="post" action="{% url 'Administrator:accept_user' user.id %}">
+                                        {% csrf_token %}
+                                        <button type="submit" class="rounded-full bg-[#E9FAEE] px-4 py-2 text-sm font-medium text-[#236241] transition-all duration-300 hover:-translate-y-0.5 hover:bg-[#DDF5E5] {% if user.status == 1 %}opacity-60{% endif %}">
+                                            Accept
+                                        </button>
+                                    </form>
+                                    <form method="post" action="{% url 'Administrator:reject_user' user.id %}">
+                                        {% csrf_token %}
+                                        <button type="submit" class="rounded-full bg-[#FFF0F3] px-4 py-2 text-sm font-medium text-[#A8485D] transition-all duration-300 hover:-translate-y-0.5 hover:bg-[#FFE4E9] {% if user.status == 2 %}opacity-60{% endif %}">
+                                            Reject
+                                        </button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="px-6 py-16 text-center">
+                <div class="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-[#FFF1F4] text-[#D96C7A]">
+                    <svg class="h-9 w-9" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M5.121 17.804A11.953 11.953 0 0112 15c2.5 0 4.82.765 6.879 2.07M15 11a3 3 0 11-6 0 3 3 0 016 0zM21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                </div>
+                <h3 class="text-xl font-semibold text-[#181818]">No registered users yet</h3>
+                <p class="mt-2 text-sm text-[#6D6568]">New signups will appear here for verification.</p>
+            </div>
+            {% endif %}
+        </section>
+    </div>
+</body>
+</html>

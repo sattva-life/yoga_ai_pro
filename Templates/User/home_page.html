@@ -14,7 +14,15 @@
 			<a href="#practice-plan" class="hover:text-[#D96C7A] transition-colors">Practice Plan</a>
 			<a href="#features" class="hover:text-[#D96C7A] transition-colors">Benefits</a>
 			<a href="#programs" class="hover:text-[#D96C7A] transition-colors">Programs</a>
-			<a href="{% url 'Guest:landing' %}" class="hover:text-[#D96C7A] transition-colors">Logout</a>
+			{% if current_user %}
+			<span class="inline-flex items-center gap-2 rounded-full bg-white/75 px-3 py-1.5 text-[#6A6163]">
+				{% if current_user.photo %}
+				<img src="{{ current_user.photo.url }}" alt="{{ current_user.name }}" class="h-8 w-8 rounded-full object-cover">
+				{% endif %}
+				{{ current_user.name }}
+			</span>
+			{% endif %}
+			<a href="{% url 'Guest:logout' %}" class="hover:text-[#D96C7A] transition-colors">Logout</a>
 			<a href="https://sattvalife.yoga/" target="_blank"
 				class="inline-flex items-center justify-center rounded-full bg-gradient-to-r from-[#E88490] to-[#D96C7A] px-5 py-2.5 text-white shadow-lg shadow-[#E88490]/25 hover:-translate-y-0.5 transition-all">
 				Visit Official Website
@@ -123,7 +131,7 @@
 				</a>
 
 				<!-- Warrior II -->
-				<div class="block snap-start shrink-0 w-[86vw] sm:w-[420px]">
+				<a href="{% url 'User:warrior_live_page' %}" class="block snap-start shrink-0 w-[86vw] sm:w-[420px]">
 					<article
 						class="bg-white rounded-[2rem] border border-[#F3DADF] overflow-hidden shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-300">
 						<img src="{% static 'Poses/warrior2.jpg' %}" alt="Warrior II Pose"
@@ -135,7 +143,7 @@
 							</p>
 						</div>
 					</article>
-				</div>
+				</a>
 
 				<!-- Tree -->
 				<a href="{% url 'User:camera_page' %}" class="block snap-start shrink-0 w-[86vw] sm:w-[420px]">

@@ -1,0 +1,162 @@
+{% extends "Guest/base.html" %}
+{% load static %}
+
+{% block header %}{% endblock %}
+
+{% block content %}
+<section class="relative min-h-screen overflow-hidden">
+    <img
+        src="https://images.unsplash.com/photo-1506126613408-eca07ce68773?q=80&w=2200&auto=format&fit=crop"
+        alt="Yoga signup background"
+        class="absolute inset-0 w-full h-full object-cover"
+    >
+    <div class="absolute inset-0 bg-black/34"></div>
+    <div class="absolute inset-0 bg-gradient-to-r from-[#111111]/40 via-[#111111]/22 to-[#111111]/12"></div>
+    <div class="absolute inset-0 bg-gradient-to-br from-[#E88490]/20 via-[#FBECEF]/12 to-[#111111]/24"></div>
+
+    <div class="absolute top-[8%] left-[8%] w-[320px] h-[320px] bg-[#E88490]/18 rounded-full blur-3xl"></div>
+    <div class="absolute bottom-[10%] right-[8%] w-[260px] h-[260px] bg-[#F6B6C0]/12 rounded-full blur-3xl"></div>
+
+    <div class="relative z-10 flex items-center justify-center min-h-screen px-4 pt-24 pb-28">
+        <div class="w-full max-w-3xl mt-10">
+            <a href="{% url 'Guest:landing' %}" class="mb-6 flex items-center justify-center group">
+                <img
+                    src="{% static 'sly-logo-spaces.png' %}"
+                    alt="SattvaLife Yoga Logo"
+                    class="h-16 sm:h-20 w-auto object-contain drop-shadow-[0_10px_24px_rgba(0,0,0,0.30)] transition-transform duration-300 group-hover:scale-105"
+                >
+            </a>
+
+            <div class="bg-white/94 backdrop-blur-xl shadow-[0_20px_50px_-12px_rgba(0,0,0,0.35)] border border-white/70 rounded-[2.5rem] p-8 sm:p-10 lg:p-12 transition-all duration-700 hover:shadow-[0_25px_60px_-15px_rgba(0,0,0,0.45)]">
+                <div class="text-center mb-10">
+                    <h1 class="text-3xl font-bold text-[#181818] mb-2">Create Your Account</h1>
+                    <p class="text-[15px] text-[#5F595C] font-normal">Join your personalized SattvaLife practice space.</p>
+                </div>
+
+                <div class="mb-6 rounded-2xl border border-[#F3DADF] bg-[#FFF7F8] px-4 py-3 text-sm text-[#6A6163]">
+                    After registration your account will stay under verification until an administrator approves it.
+                </div>
+
+                <form method="post" action="{% url 'Guest:signup' %}" enctype="multipart/form-data" class="space-y-6">
+                    {% csrf_token %}
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label for="signupName" class="block text-sm font-medium text-[#4F4A4C] mb-2">Name</label>
+                            <input
+                                id="signupName"
+                                name="name"
+                                type="text"
+                                value="{{ name_value|default:'' }}"
+                                placeholder="Your full name"
+                                required
+                                class="w-full bg-[#FFF8F8] border border-[#EACFD5] rounded-xl px-4 py-3.5 text-[15px] text-[#232323] placeholder-[#877F82] focus:ring-2 focus:ring-[#E88490]/35 focus:border-[#E8C7CD] focus:bg-white transition-all duration-300 outline-none"
+                            >
+                        </div>
+
+                        <div>
+                            <label for="signupEmail" class="block text-sm font-medium text-[#4F4A4C] mb-2">Email</label>
+                            <input
+                                id="signupEmail"
+                                name="email"
+                                type="email"
+                                value="{{ email_value|default:'' }}"
+                                placeholder="name@example.com"
+                                required
+                                class="w-full bg-[#FFF8F8] border border-[#EACFD5] rounded-xl px-4 py-3.5 text-[15px] text-[#232323] placeholder-[#877F82] focus:ring-2 focus:ring-[#E88490]/35 focus:border-[#E8C7CD] focus:bg-white transition-all duration-300 outline-none"
+                            >
+                        </div>
+
+                        <div>
+                            <label for="signupPassword" class="block text-sm font-medium text-[#4F4A4C] mb-2">Password</label>
+                            <div class="relative">
+                                <input
+                                    id="signupPassword"
+                                    name="password"
+                                    type="password"
+                                    placeholder="Create a password"
+                                    required
+                                    minlength="8"
+                                    class="w-full bg-[#FFF8F8] border border-[#EACFD5] rounded-xl px-4 py-3.5 text-[15px] text-[#232323] placeholder-[#877F82] focus:ring-2 focus:ring-[#E88490]/35 focus:border-[#E8C7CD] focus:bg-white transition-all duration-300 outline-none pr-12"
+                                >
+                                <button type="button" data-toggle-password="signupPassword" class="absolute right-4 top-1/2 -translate-y-1/2 text-[#8D8689] hover:text-[#5F595C] focus:outline-none">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label for="signupConfirmPassword" class="block text-sm font-medium text-[#4F4A4C] mb-2">Confirm Password</label>
+                            <div class="relative">
+                                <input
+                                    id="signupConfirmPassword"
+                                    name="confirm_password"
+                                    type="password"
+                                    placeholder="Repeat your password"
+                                    required
+                                    minlength="8"
+                                    class="w-full bg-[#FFF8F8] border border-[#EACFD5] rounded-xl px-4 py-3.5 text-[15px] text-[#232323] placeholder-[#877F82] focus:ring-2 focus:ring-[#E88490]/35 focus:border-[#E8C7CD] focus:bg-white transition-all duration-300 outline-none pr-12"
+                                >
+                                <button type="button" data-toggle-password="signupConfirmPassword" class="absolute right-4 top-1/2 -translate-y-1/2 text-[#8D8689] hover:text-[#5F595C] focus:outline-none">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label for="signupAddress" class="block text-sm font-medium text-[#4F4A4C] mb-2">Address</label>
+                        <textarea
+                            id="signupAddress"
+                            name="address"
+                            rows="4"
+                            placeholder="Enter your address"
+                            required
+                            class="w-full bg-[#FFF8F8] border border-[#EACFD5] rounded-xl px-4 py-3.5 text-[15px] text-[#232323] placeholder-[#877F82] focus:ring-2 focus:ring-[#E88490]/35 focus:border-[#E8C7CD] focus:bg-white transition-all duration-300 outline-none resize-y"
+                        >{{ address_value|default:'' }}</textarea>
+                    </div>
+
+                    <div>
+                        <label for="signupPhoto" class="block text-sm font-medium text-[#4F4A4C] mb-2">Photo</label>
+                        <input
+                            id="signupPhoto"
+                            name="photo"
+                            type="file"
+                            accept="image/*"
+                            required
+                            class="w-full bg-[#FFF8F8] border border-[#EACFD5] rounded-xl px-4 py-3.5 text-[15px] text-[#5F595C] file:mr-4 file:rounded-full file:border-0 file:bg-[#E88490] file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-[#D96C7A] focus:ring-2 focus:ring-[#E88490]/35 focus:border-[#E8C7CD] focus:bg-white transition-all duration-300 outline-none"
+                        >
+                    </div>
+
+                    <button type="submit" class="w-full bg-gradient-to-r from-[#E88490] to-[#D96C7A] text-white rounded-xl py-3.5 font-medium flex justify-center items-center gap-2 shadow-lg shadow-[#E88490]/25 transition-all duration-300 hover:shadow-xl hover:-translate-y-0.5 hover:from-[#D96C7A] hover:to-[#C45B69]">
+                        Create Account
+                        <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+                    </button>
+                </form>
+
+                <div class="mt-8 text-center">
+                    <p class="text-[15px] text-[#5F595C] font-normal">Already have an account? <a href="{% url 'Guest:login' %}" class="text-[#D96C7A] font-medium hover:text-[#C45B69] transition-colors">Log in</a></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="w-full absolute bottom-0 pb-8 pt-4 px-6 sm:px-12 z-10 flex flex-col md:flex-row justify-between items-center text-sm gap-4">
+        <p class="text-white/80 font-light">&copy; 2024 SattvaLife Yoga AI. All rights reserved.</p>
+        <div class="flex gap-6">
+            <a href="https://sattvalife.yoga/" target="_blank" class="text-white/80 hover:text-[#F6C2CA] font-light transition-colors">Visit Official Website</a>
+            <a href="#" class="text-white/80 hover:text-[#F6C2CA] font-light transition-colors">Privacy Policy</a>
+            <a href="#" class="text-white/80 hover:text-[#F6C2CA] font-light transition-colors">Terms of Service</a>
+            <a href="#" class="text-white/80 hover:text-[#F6C2CA] font-light transition-colors">Contact Us</a>
+        </div>
+    </footer>
+</section>
+<script>
+    document.querySelectorAll("[data-toggle-password]").forEach((button) => {
+        button.addEventListener("click", () => {
+            const input = document.getElementById(button.getAttribute("data-toggle-password"));
+            if (!input) return;
+            input.type = input.type === "password" ? "text" : "password";
+        });
+    });
+</script>
+{% endblock %}

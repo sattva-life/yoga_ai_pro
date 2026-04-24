@@ -1187,6 +1187,7 @@
         // Report Configs
         const REPORT_LOGO = "{% static 'images/sattvalife-logo.png' %}";
         const REPORT_FALLBACK_LOGO = "{% static 'logo.png' %}";
+        const IS_TOUCH_DEVICE = window.matchMedia("(pointer: coarse)").matches || /android|iphone|ipad|ipod/i.test(navigator.userAgent);
 
         function toggleGuide() {
             guidePanel.classList.toggle("open");
@@ -1207,6 +1208,20 @@
 
         function setCameraBanner(text) {
             cameraStatusBanner.textContent = text;
+        }
+
+        function getReportCanvasScale() {
+            if (IS_TOUCH_DEVICE) return 1.2;
+            return 1.8;
+        }
+
+        function getReportCanvasOptions(backgroundColor = "#f7f8f7") {
+            return {
+                scale: getReportCanvasScale(),
+                useCORS: true,
+                backgroundColor,
+                logging: false,
+            };
         }
 
         function setButtonsState() {
@@ -2085,10 +2100,13 @@
         }
 
         async function generatePDFReport() {
+            const originalButtonText = downloadReportBtn.textContent;
             try {
                 if (!freezeFrameImage.src || !isFrozen) {
                     alert("Please complete the 10-second hold first to generate a full report."); return;
                 }
+                downloadReportBtn.disabled = true;
+                downloadReportBtn.textContent = "Preparing...";
 
                 const score = Number((document.getElementById("scoreText").textContent || "0").replace(/[^\d.-]/g, "")) || 0;
                 const bestHold = document.getElementById("holdText").textContent || "-"; 
@@ -2156,8 +2174,8 @@
                     return new Promise(res => { img.onload = res; img.onerror = res; });
                 }));
 
-                const canvas = await html2canvas(reportContainer.firstElementChild, { scale: 2, useCORS: true, backgroundColor: "#f7f8f7" });
-                const imgData = canvas.toDataURL("image/png");
+                const canvas = await html2canvas(reportContainer.firstElementChild, getReportCanvasOptions("#f7f8f7"));
+                const imgData = canvas.toDataURL("image/jpeg", 0.92);
 
                 const pdf = new window.jspdf.jsPDF("p", "mm", "a4");
                 const pdfWidth = 210, margin = 6, usableWidth = pdfWidth - margin * 2;
@@ -2166,13 +2184,13 @@
                 let heightLeft = imgHeight;
                 let position = margin;
 
-                pdf.addImage(imgData, "PNG", margin, position, usableWidth, imgHeight);
+                pdf.addImage(imgData, "JPEG", margin, position, usableWidth, imgHeight);
                 heightLeft -= (297 - margin * 2);
 
                 while (heightLeft > 0) {
                     position = heightLeft - imgHeight + margin;
                     pdf.addPage();
-                    pdf.addImage(imgData, "PNG", margin, position, usableWidth, imgHeight);
+                    pdf.addImage(imgData, "JPEG", margin, position, usableWidth, imgHeight);
                     heightLeft -= (297 - margin * 2);
                 }
 
@@ -2180,6 +2198,9 @@
             } catch (error) {
                 console.error("PDF generation error:", error);
                 alert("Failed to generate report PDF.");
+            } finally {
+                downloadReportBtn.disabled = !stream || !isFrozen;
+                downloadReportBtn.textContent = originalButtonText;
             }
         }
     </script>

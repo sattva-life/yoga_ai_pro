@@ -36,6 +36,7 @@ DD_HIP_FOLD_MAX_ANGLE = 132.0
 DD_SUPPORT_VISIBILITY_MIN = 0.40
 DD_DOMINANT_VISIBILITY_MIN = 0.46
 DD_POINT_VISIBILITY_MIN = 0.18
+DD_FRONTEND_POINT_VISIBILITY_MIN = 0.18
 DD_POSE_READY_SCORE = 72
 DD_HOLD_READY_SCORE = 86
 DD_CORE_SHAPE_READY_MIN = 4
@@ -369,20 +370,28 @@ def dd_smooth_runtime_boolean(runtime, key, value, maxlen=DD_BOOLEAN_HISTORY_SIZ
     return true_count >= max(2, len(history) // 2 + 1)
 
 
-def dd_smooth_point(runtime, key, x, y, z):
+def dd_smooth_point(runtime, key, x, y, z, visibility=1.0):
     if key not in runtime.point_history:
         runtime.point_history[key] = deque(maxlen=DD_POINT_HISTORY_SIZE)
 
-    runtime.point_history[key].append((float(x), float(y), float(z)))
-    xs = [p[0] for p in runtime.point_history[key]]
-    ys = [p[1] for p in runtime.point_history[key]]
-    zs = [p[2] for p in runtime.point_history[key]]
+    history = runtime.point_history[key]
+    current = np.array([float(x), float(y), float(z)], dtype=np.float32)
 
-    return (
-        float(sum(xs) / len(xs)),
-        float(sum(ys) / len(ys)),
-        float(sum(zs) / len(zs)),
-    )
+    if not history:
+        history.append(tuple(current))
+        return tuple(current.tolist())
+
+    prev = np.array(history[-1], dtype=np.float32)
+
+    # Visibility-aware alpha
+    visibility = float(np.clip(visibility, 0.0, 1.0))
+    alpha = 0.55 if visibility > 0.65 else 0.32
+    if np.linalg.norm(current[:2] - prev[:2]) > 0.08:
+        alpha = min(0.82, alpha + 0.18)
+
+    smoothed = (1.0 - alpha) * prev + alpha * current
+    history.append(tuple(smoothed.tolist()))
+    return tuple(smoothed.tolist())
 
 
 def dd_clear_point_history(runtime):
@@ -484,12 +493,22 @@ def dd_extract_raw_landmark_dict(landmarks):
 
 
 def dd_normalize_landmarks_inplace(lm_dict):
-    left_hip_x = lm_dict["left_hip"]["x"]
-    left_hip_y = lm_dict["left_hip"]["y"]
+    left_hip = np.array([lm_dict["left_hip"]["x"], lm_dict["left_hip"]["y"]], dtype=np.float32)
+    right_hip = np.array([lm_dict["right_hip"]["x"], lm_dict["right_hip"]["y"]], dtype=np.float32)
+    left_shoulder = np.array([lm_dict["left_shoulder"]["x"], lm_dict["left_shoulder"]["y"]], dtype=np.float32)
+    right_shoulder = np.array([lm_dict["right_shoulder"]["x"], lm_dict["right_shoulder"]["y"]], dtype=np.float32)
+
+    hip_center = (left_hip + right_hip) / 2.0
+    shoulder_center = (left_shoulder + right_shoulder) / 2.0
+    torso_scale = np.linalg.norm(shoulder_center - hip_center)
+
+    if torso_scale < 1e-4:
+        torso_scale = 1.0
 
     for name in lm_dict.keys():
-        lm_dict[name]["x"] -= left_hip_x
-        lm_dict[name]["y"] -= left_hip_y
+        lm_dict[name]["x"] = (lm_dict[name]["x"] - float(hip_center[0])) / float(torso_scale)
+        lm_dict[name]["y"] = (lm_dict[name]["y"] - float(hip_center[1])) / float(torso_scale)
+        lm_dict[name]["z"] = lm_dict[name]["z"] / float(torso_scale)
 
 
 def dd_build_feature_dataframe_from_landmarks(landmarks):
@@ -1090,21 +1109,27 @@ def dd_pose_flags(checks, stable_score, pose_status):
 def dd_is_downdog_like(model_label, model_confidence, checks):
     label = str(model_label).lower()
 
-    if checks.get("dominant_side_gate", False):
-        return True
-
-    if checks.get("soft_down_dog_gate", False):
-        return True
-
-    if ("down" in label or "dog" in label) and model_confidence >= 0.58:
-        return True
-
-    if (
+    strong_geometry = (
         checks.get("hips_above_shoulders") and
         checks.get("hips_high") and
         checks.get("hip_fold_ok") and
-        checks.get("core_shape_ready") and
-        checks.get("detail_shape_ready")
+        checks.get("core_shape_ready")
+    )
+
+    very_strong_geometry = (
+        strong_geometry and
+        checks.get("dominant_arm_straight") and
+        checks.get("dominant_leg_straight") and
+        checks.get("spine_long")
+    )
+
+    if very_strong_geometry:
+        return True
+
+    if (
+        ("down" in label or "dog" in label) and
+        model_confidence >= 0.72 and
+        strong_geometry
     ):
         return True
 
@@ -1161,16 +1186,29 @@ def dd_quality_from_score(score):
 
 def dd_build_points_for_frontend(raw_pts, landmarks, analysis):
     dominant_side = analysis.get("dominant_side", "left")
+    support_visible = analysis.get("support_vis", 0.0) >= DD_SUPPORT_VISIBILITY_MIN
     dominant_idxs = (
         [DD_LEFT_SHOULDER, DD_LEFT_ELBOW, DD_LEFT_WRIST, DD_LEFT_HIP, DD_LEFT_KNEE, DD_LEFT_ANKLE]
         if dominant_side == "left" else
         [DD_RIGHT_SHOULDER, DD_RIGHT_ELBOW, DD_RIGHT_WRIST, DD_RIGHT_HIP, DD_RIGHT_KNEE, DD_RIGHT_ANKLE]
     )
+    support_idxs = (
+        [DD_RIGHT_SHOULDER, DD_RIGHT_ELBOW, DD_RIGHT_WRIST, DD_RIGHT_HIP, DD_RIGHT_KNEE, DD_RIGHT_ANKLE]
+        if dominant_side == "left" else
+        [DD_LEFT_SHOULDER, DD_LEFT_ELBOW, DD_LEFT_WRIST, DD_LEFT_HIP, DD_LEFT_KNEE, DD_LEFT_ANKLE]
+    )
 
     points = []
     for idx in DD_SELECTED_POINTS + DD_EXTRA_POINTS:
         visibility = float(landmarks[idx].visibility)
-        if visibility < DD_POINT_VISIBILITY_MIN:
+        # Keep points if recently visible (for less aggressive hiding)
+        recently_visible = visibility >= DD_FRONTEND_POINT_VISIBILITY_MIN or (
+            hasattr(runtime, "point_history") and idx in runtime.point_history and len(runtime.point_history[idx]) > 0
+        )
+        if not recently_visible and idx not in dominant_idxs:
+            continue
+
+        if idx in support_idxs and not support_visible:
             continue
 
         is_dominant = idx in dominant_idxs
@@ -1281,6 +1319,115 @@ def dd_pose_success(**kwargs):
     return dd_api_success(**payload)
 
 
+def dd_is_downdog_like(model_label, model_confidence, checks):
+    label = str(model_label).lower()
+
+    strong_geometry = (
+        checks.get("hips_above_shoulders") and
+        checks.get("hips_high") and
+        checks.get("hip_fold_ok") and
+        checks.get("core_shape_ready")
+    )
+
+    very_strong_geometry = (
+        strong_geometry and
+        checks.get("dominant_arm_straight") and
+        checks.get("dominant_leg_straight") and
+        checks.get("spine_long")
+    )
+
+    if very_strong_geometry:
+        return True
+
+    if (
+        ("down" in label or "dog" in label) and
+        model_confidence >= 0.38 and
+        strong_geometry
+    ):
+        return True
+
+    return False
+
+
+def dd_build_points_for_frontend(raw_pts, landmarks, analysis):
+    dominant_side = analysis.get("dominant_side", "left")
+    runtime = analysis.get("_runtime")
+    support_visible = analysis.get("support_vis", 0.0) >= DD_SUPPORT_VISIBILITY_MIN
+    dominant_idxs = (
+        [DD_LEFT_SHOULDER, DD_LEFT_ELBOW, DD_LEFT_WRIST, DD_LEFT_HIP, DD_LEFT_KNEE, DD_LEFT_ANKLE]
+        if dominant_side == "left" else
+        [DD_RIGHT_SHOULDER, DD_RIGHT_ELBOW, DD_RIGHT_WRIST, DD_RIGHT_HIP, DD_RIGHT_KNEE, DD_RIGHT_ANKLE]
+    )
+    support_idxs = (
+        [DD_RIGHT_SHOULDER, DD_RIGHT_ELBOW, DD_RIGHT_WRIST, DD_RIGHT_HIP, DD_RIGHT_KNEE, DD_RIGHT_ANKLE]
+        if dominant_side == "left" else
+        [DD_LEFT_SHOULDER, DD_LEFT_ELBOW, DD_LEFT_WRIST, DD_LEFT_HIP, DD_LEFT_KNEE, DD_LEFT_ANKLE]
+    )
+
+    points = []
+    for idx in DD_SELECTED_POINTS:
+        visibility = float(landmarks[idx].visibility)
+        point_key = f"dd_{idx}"
+        recently_visible = visibility >= DD_FRONTEND_POINT_VISIBILITY_MIN or (
+            hasattr(runtime, "point_history") and point_key in runtime.point_history and len(runtime.point_history[point_key]) > 0
+        )
+        if not recently_visible and idx not in dominant_idxs:
+            continue
+
+        if idx in support_idxs and not support_visible:
+            continue
+
+        is_dominant = idx in dominant_idxs
+        points.append({
+            "name": DD_POINT_NAME_MAP.get(idx, f"point_{idx}"),
+            "x": float(np.clip(raw_pts[idx][0], 0.0, 1.0)),
+            "y": float(np.clip(raw_pts[idx][1], 0.0, 1.0)),
+            "color": DD_YELLOW,
+            "radius": 7 if is_dominant else 6,
+            "visible": True,
+            "visibility": round(visibility, 3),
+            "role": "dominant" if is_dominant else "support",
+        })
+    return points
+
+
+def dd_build_angle_texts(raw_pts, landmarks, analysis):
+    dominant_side = analysis.get("dominant_side", "left")
+    support_visible = analysis.get("support_vis", 0.0) >= DD_SUPPORT_VISIBILITY_MIN
+    items = []
+
+    if dominant_side == "left":
+        primary = [
+            (DD_LEFT_ELBOW, analysis["angles"].get("left_elbow_angle", 0), DD_YELLOW, "left_elbow"),
+            (DD_LEFT_KNEE, analysis["angles"].get("left_knee_angle", 0), DD_YELLOW, "left_knee"),
+        ]
+        secondary = [
+            (DD_RIGHT_ELBOW, analysis["angles"].get("right_elbow_angle", 0), DD_CYAN, "right_elbow"),
+            (DD_RIGHT_KNEE, analysis["angles"].get("right_knee_angle", 0), DD_CYAN, "right_knee"),
+        ]
+    else:
+        primary = [
+            (DD_RIGHT_ELBOW, analysis["angles"].get("right_elbow_angle", 0), DD_YELLOW, "right_elbow"),
+            (DD_RIGHT_KNEE, analysis["angles"].get("right_knee_angle", 0), DD_YELLOW, "right_knee"),
+        ]
+        secondary = [
+            (DD_LEFT_ELBOW, analysis["angles"].get("left_elbow_angle", 0), DD_CYAN, "left_elbow"),
+            (DD_LEFT_KNEE, analysis["angles"].get("left_knee_angle", 0), DD_CYAN, "left_knee"),
+        ]
+
+    for idx, value, color, joint_key in primary + (secondary if support_visible else []):
+        if float(landmarks[idx].visibility) < 0.30:
+            continue
+        items.append({
+            "text": f"{int(round(float(value)))}{DD_DEGREE_SIGN}",
+            "x": float(np.clip(raw_pts[idx][0], 0.0, 1.0)),
+            "y": float(np.clip(raw_pts[idx][1], 0.0, 1.0)),
+            "color": color,
+            "joint_key": joint_key,
+        })
+    return items
+
+
 # =========================================================
 # MAIN PROCESS
 # =========================================================
@@ -1340,7 +1487,14 @@ def process_down_dog_request(request):
         smoothed_pts = raw_pts.copy()
 
         for idx in DD_SELECTED_POINTS + DD_EXTRA_POINTS:
-            sx, sy, sz = dd_smooth_point(runtime, f"dd_{idx}", raw_pts[idx][0], raw_pts[idx][1], raw_pts[idx][2])
+            sx, sy, sz = dd_smooth_point(
+                runtime,
+                f"dd_{idx}",
+                raw_pts[idx][0],
+                raw_pts[idx][1],
+                raw_pts[idx][2],
+                visibility=float(landmarks[idx].visibility),
+            )
             smoothed_pts[idx] = [sx, sy, sz]
 
         full_body_visible, visible_count, avg_visibility = dd_check_body_visibility(lm_dict)

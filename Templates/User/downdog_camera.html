@@ -1238,6 +1238,7 @@
 
         const REPORT_LOGO = "{% static 'images/sattvalife-logo.png' %}";
         const REPORT_FALLBACK_LOGO = "{% static 'logo.png' %}";
+        const IS_TOUCH_DEVICE = window.matchMedia("(pointer: coarse)").matches || /android|iphone|ipad|ipod/i.test(navigator.userAgent);
 
         function byId(id) { return document.getElementById(id); }
         function setText(id, value) { const el = byId(id); if (el) el.textContent = value; }
@@ -1252,6 +1253,20 @@
             else if (s.includes("warning")) el.classList.add("status-warn");
             else if (s.includes("bad")) el.classList.add("status-bad");
             else el.classList.add("status-neutral");
+        }
+
+        function getReportCanvasScale() {
+            if (IS_TOUCH_DEVICE) return 1.2;
+            return 1.8;
+        }
+
+        function getReportCanvasOptions(backgroundColor = "#f7f8f7") {
+            return {
+                scale: getReportCanvasScale(),
+                useCORS: true,
+                backgroundColor,
+                logging: false,
+            };
         }
 
         function openGuide() {
@@ -1350,9 +1365,10 @@
             const dy = y - prev.y;
             const dist = Math.sqrt(dx * dx + dy * dy);
 
-            let alpha = 0.18;
-            if (dist > 60) alpha = 0.65;
-            else if (dist > 25) alpha = 0.35;
+            let alpha = 0.22;
+            if (dist > 60) alpha = 0.60;
+            else if (dist > 30) alpha = 0.42;
+            else if (dist > 12) alpha = 0.30;
 
             prev.x += dx * alpha;
             prev.y += dy * alpha;
@@ -1579,17 +1595,14 @@
             updateHoldReadouts();
         }
 
-        function beginHoldCountdown(now) {
+        function beginHoldCountdown(now = performance.now()) {
             holdState.isActive = true;
-            holdState.startedAt = now;
+            holdState.startedAt = now - holdState.accumulatedMs;
             holdState.lastTickAt = now;
-            holdState.accumulatedMs = 0;
             holdState.lastCountdownNumber = TARGET_HOLD_SECONDS;
             holdState.completed = false;
             countdownText.textContent = String(TARGET_HOLD_SECONDS);
             countdownOverlay.classList.remove("hidden");
-            updateHoldReadouts();
-            speakFeedback(`Great posture. Hold steady for ${TARGET_HOLD_SECONDS} seconds.`, SPEECH_PRIORITY_HOLD);
         }
 
         function pauseHoldCountdown(now) {
@@ -1600,7 +1613,16 @@
         }
 
         function abortHoldCountdown({ preserveBest = true } = {}) {
-            resetHoldState({ preserveBest });
+            const bestHoldMs = preserveBest ? holdState.bestHoldMs : 0;
+            holdState.isActive = false;
+            holdState.startedAt = 0;
+            holdState.accumulatedMs = 0;
+            holdState.lastTickAt = 0;
+            holdState.lastCountdownNumber = null;
+            holdState.completed = false;
+            holdState.bestHoldMs = bestHoldMs;
+            countdownOverlay.classList.add("hidden");
+            countdownText.textContent = String(TARGET_HOLD_SECONDS);
         }
 
         function completeHoldCountdown() {
@@ -1616,25 +1638,27 @@
             speakFeedback("Great job! You completed Downward Dog.", SPEECH_PRIORITY_ALERT);
         }
 
-        function advanceHoldCountdown(now) {
+        function advanceHoldCountdown(now = performance.now()) {
             if (!holdState.isActive) return;
 
-            const delta = Math.max(0, now - (holdState.lastTickAt || now));
-            holdState.lastTickAt = now;
-            holdState.accumulatedMs = Math.min(TARGET_HOLD_MS, holdState.accumulatedMs + delta);
+            holdState.accumulatedMs = Math.min(TARGET_HOLD_MS, now - holdState.startedAt);
             holdState.bestHoldMs = Math.max(holdState.bestHoldMs, holdState.accumulatedMs);
 
-            const elapsedWholeSeconds = Math.floor(holdState.accumulatedMs / 1000);
-            const countdownNumber = Math.max(1, TARGET_HOLD_SECONDS - elapsedWholeSeconds);
+            const remainingMs = Math.max(0, TARGET_HOLD_MS - holdState.accumulatedMs);
+            const countdownNumber = Math.ceil(remainingMs / 1000);
+
             countdownOverlay.classList.remove("hidden");
             countdownText.textContent = String(countdownNumber);
 
-            if (holdState.lastCountdownNumber !== null && countdownNumber < holdState.lastCountdownNumber) {
+            if (
+                holdState.lastCountdownNumber !== null &&
+                countdownNumber < holdState.lastCountdownNumber &&
+                countdownNumber > 0
+            ) {
                 speakFeedback(String(countdownNumber), SPEECH_PRIORITY_ALERT);
             }
-            holdState.lastCountdownNumber = countdownNumber;
 
-            updateHoldReadouts();
+            holdState.lastCountdownNumber = countdownNumber;
 
             if (holdState.accumulatedMs >= TARGET_HOLD_MS) {
                 completeHoldCountdown();
@@ -1880,25 +1904,26 @@
             freezeFrameImage.src = "";
             cameraFrame.classList.remove("perfect-ring");
 
+            abortActiveRequest();
+
             cameraState.isFrozen = false;
             cameraState.sessionNeedsReset = true;
             cameraState.lastPayload = null;
             cameraState.lastGoodPayload = null;
             cameraState.lostFrameCount = 0;
 
-            abortActiveRequest();
             pollState.requestInFlight = false;
             pollState.controller = null;
             pollState.latestRequestId += 1;
 
             resetHoldState({ preserveBest: true });
-            clearSpeechState({ cancelActive: false });
+            clearSpeechState({ cancelActive: true });
             resetDisplayPointState();
             clearOverlay();
 
             if (cameraState.stream) {
                 startPredictionLoop();
-                setCameraBanner("Live analysis running");
+                setCameraBanner("Live analysis restarted");
                 setText("frameStateText", "Live");
             } else {
                 setCameraBanner("Camera stopped");
@@ -2415,11 +2440,14 @@
         }
 
         async function generatePDFReport() {
+            const originalButtonText = downloadReportBtn.textContent;
             try {
                 if (!freezeFrameImage.src) {
                     alert("No frozen perfect frame found. Hold the perfect pose first, then download the report.");
                     return;
                 }
+                downloadReportBtn.disabled = true;
+                downloadReportBtn.textContent = "Preparing...";
 
                 const score = Number((byId("scoreText").textContent || "0").replace(/[^\d.-]/g, "")) || 0;
                 const confidence = byId("confidenceText").textContent || "-";
@@ -2491,13 +2519,9 @@
                 await waitForImagesLoaded(reportContainer);
 
                 const reportElement = reportContainer.firstElementChild;
-                const canvas = await html2canvas(reportElement, {
-                    scale: 2,
-                    useCORS: true,
-                    backgroundColor: "#f7f8f7"
-                });
+                const canvas = await html2canvas(reportElement, getReportCanvasOptions("#f7f8f7"));
 
-                const imgData = canvas.toDataURL("image/png");
+                const imgData = canvas.toDataURL("image/jpeg", 0.92);
                 const { jsPDF } = window.jspdf;
 
                 const pdf = new jsPDF("p", "mm", "a4");
@@ -2512,13 +2536,13 @@
                 let heightLeft = imgHeight;
                 let position = margin;
 
-                pdf.addImage(imgData, "PNG", margin, position, imgWidth, imgHeight);
+                pdf.addImage(imgData, "JPEG", margin, position, imgWidth, imgHeight);
                 heightLeft -= (pdfHeight - margin * 2);
 
                 while (heightLeft > 0) {
                     position = heightLeft - imgHeight + margin;
                     pdf.addPage();
-                    pdf.addImage(imgData, "PNG", margin, position, imgWidth, imgHeight);
+                    pdf.addImage(imgData, "JPEG", margin, position, imgWidth, imgHeight);
                     heightLeft -= (pdfHeight - margin * 2);
                 }
 
@@ -2527,6 +2551,9 @@
             } catch (error) {
                 console.error("PDF generation error:", error);
                 alert("Failed to generate report PDF. Check console for details.");
+            } finally {
+                downloadReportBtn.disabled = !cameraState.isFrozen;
+                downloadReportBtn.textContent = originalButtonText;
             }
         }
 
