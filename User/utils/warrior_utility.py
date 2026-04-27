@@ -295,6 +295,7 @@ def wr_pose_success(**kwargs):
         "perfect_hold": False,
         "points": [],
         "angle_texts": [],
+        "joint_states": {},
         "pose_ready": False,
         "hold_ready": False,
     }
@@ -412,16 +413,25 @@ def wr_smooth_point(runtime, key, x, y, z, visibility=1.0):
 
     history = runtime.point_history[key]
     current = np.array([float(x), float(y), float(z)], dtype=np.float32)
+    visibility = float(np.clip(visibility, 0.0, 1.0))
+
+    if visibility < WR_FRONTEND_POINT_VISIBILITY_MIN and history:
+        previous = history[-1]
+        return float(previous[0]), float(previous[1]), float(previous[2])
 
     if not history:
         history.append(tuple(current))
         return float(current[0]), float(current[1]), float(current[2])
 
     prev = np.array(history[-1], dtype=np.float32)
-    visibility = float(np.clip(visibility, 0.0, 1.0))
-    alpha = 0.58 if visibility > 0.65 else 0.34
-    if np.linalg.norm(current[:2] - prev[:2]) > 0.08:
-        alpha = min(0.82, alpha + 0.16)
+    delta = current - prev
+    distance = float(np.linalg.norm(delta[:2]))
+    max_step = 0.085 if visibility >= 0.65 else 0.045
+
+    if distance > max_step:
+        current = prev + (delta / (float(np.linalg.norm(delta)) + 1e-6)) * max_step
+
+    alpha = 0.40 if visibility >= 0.65 else 0.24
 
     smoothed = prev * (1.0 - alpha) + current * alpha
     history.append(tuple(smoothed))
@@ -476,6 +486,15 @@ def wr_build_feature_dataframe_from_landmarks(landmarks):
 
     features_df = pd.DataFrame([row], columns=WR_MODEL_COLUMNS)
     return features_df, lm_dict, angles
+
+
+def wr_angles_from_points(raw_pts):
+    return {
+        "left_knee_angle": wr_calculate_angle(raw_pts[WR_LEFT_HIP][:2], raw_pts[WR_LEFT_KNEE][:2], raw_pts[WR_LEFT_ANKLE][:2]),
+        "right_knee_angle": wr_calculate_angle(raw_pts[WR_RIGHT_HIP][:2], raw_pts[WR_RIGHT_KNEE][:2], raw_pts[WR_RIGHT_ANKLE][:2]),
+        "left_elbow_angle": wr_calculate_angle(raw_pts[WR_LEFT_SHOULDER][:2], raw_pts[WR_LEFT_ELBOW][:2], raw_pts[WR_LEFT_WRIST][:2]),
+        "right_elbow_angle": wr_calculate_angle(raw_pts[WR_RIGHT_SHOULDER][:2], raw_pts[WR_RIGHT_ELBOW][:2], raw_pts[WR_RIGHT_WRIST][:2]),
+    }
 
 
 def wr_predict_model_label(features_df):
@@ -854,6 +873,64 @@ def wr_quality_from_score(score):
 # =========================================================
 # FRONTEND HELPERS
 # =========================================================
+def wr_build_joint_states(analysis):
+    checks = analysis["checks"]
+    angles = analysis["angles"]
+    front_side = checks.get("front_side", "left")
+    back_side = "right" if front_side == "left" else "left"
+
+    def leg_state(side):
+        is_front = side == front_side
+        return {
+            "ok": bool(checks.get("front_knee_bent") if is_front else checks.get("back_leg_soft")),
+            "angle": angles.get(f"{side}_knee_angle", 0),
+            "role": "front" if is_front else "back",
+            "threshold": WR_FRONT_KNEE_BENT_MAX if is_front else WR_BACK_KNEE_SOFT_MIN,
+        }
+
+    return {
+        "front_side": front_side,
+        "back_side": back_side,
+        "stance": {
+            "ok": bool(checks.get("stance_wide_enough")),
+            "ratio": round(float(checks.get("stance_ratio", 0.0)), 2),
+            "threshold": WR_STANCE_RATIO_MIN,
+        },
+        "left_knee": leg_state("left"),
+        "right_knee": leg_state("right"),
+        "left_ankle": {
+            "ok": bool(checks.get("front_knee_over_ankle") if front_side == "left" else checks.get("back_leg_soft")),
+            "role": "front" if front_side == "left" else "back",
+        },
+        "right_ankle": {
+            "ok": bool(checks.get("front_knee_over_ankle") if front_side == "right" else checks.get("back_leg_soft")),
+            "role": "front" if front_side == "right" else "back",
+        },
+        "left_elbow": {
+            "ok": bool(checks.get("arms_level") and checks.get("arms_reaching")),
+            "angle": angles.get("left_elbow_angle", 0),
+            "threshold": 148.0,
+        },
+        "right_elbow": {
+            "ok": bool(checks.get("arms_level") and checks.get("arms_reaching")),
+            "angle": angles.get("right_elbow_angle", 0),
+            "threshold": 148.0,
+        },
+        "left_wrist": {"ok": bool(checks.get("arms_level"))},
+        "right_wrist": {"ok": bool(checks.get("arms_level"))},
+        "left_shoulder": {"ok": bool(checks.get("torso_centered") and checks.get("arms_level"))},
+        "right_shoulder": {"ok": bool(checks.get("torso_centered") and checks.get("arms_level"))},
+        "torso": {"ok": bool(checks.get("torso_centered")), "threshold": WR_TORSO_CENTER_MAX_OFFSET},
+    }
+
+
+def wr_latest_point(runtime, key, fallback):
+    history = runtime.point_history.get(key)
+    if history:
+        return history[-1]
+    return fallback
+
+
 def wr_build_points_for_frontend(runtime, raw_pts, landmarks, analysis):
     checks = analysis["checks"]
     front_side = checks.get("front_side")
@@ -862,13 +939,13 @@ def wr_build_points_for_frontend(runtime, raw_pts, landmarks, analysis):
     for idx in WR_SELECTED_POINTS:
         visibility = float(landmarks[idx].visibility)
         point_key = f"wr_{idx}"
-        recently_visible = visibility >= WR_FRONTEND_POINT_VISIBILITY_MIN or (
-            point_key in runtime.point_history and len(runtime.point_history[point_key]) > 0
-        )
+        recently_visible = visibility >= WR_FRONTEND_POINT_VISIBILITY_MIN or bool(runtime.point_history.get(point_key))
         if not recently_visible:
             continue
+        display_point = raw_pts[idx] if visibility >= WR_FRONTEND_POINT_VISIBILITY_MIN else wr_latest_point(runtime, point_key, raw_pts[idx])
+        current_visible = visibility >= WR_FRONTEND_POINT_VISIBILITY_MIN
 
-        radius = 6
+        radius = 6 if current_visible else 5
         color = WR_GREEN if analysis["score"] >= 88 else WR_YELLOW
 
         if idx == (WR_LEFT_KNEE if front_side == "left" else WR_RIGHT_KNEE) and not checks.get("front_knee_bent"):
@@ -883,8 +960,8 @@ def wr_build_points_for_frontend(runtime, raw_pts, landmarks, analysis):
 
         points.append({
             "name": WR_POINT_NAME_MAP.get(idx, f"point_{idx}"),
-            "x": float(np.clip(raw_pts[idx][0], 0.0, 1.0)),
-            "y": float(np.clip(raw_pts[idx][1], 0.0, 1.0)),
+            "x": float(np.clip(display_point[0], 0.0, 1.0)),
+            "y": float(np.clip(display_point[1], 0.0, 1.0)),
             "color": color,
             "radius": radius,
             "visible": True,
@@ -904,13 +981,13 @@ def wr_build_points_for_frontend(runtime, raw_pts, landmarks, analysis):
 def wr_build_angle_texts(raw_pts, landmarks, analysis):
     items = []
     primary = [
-        (WR_LEFT_KNEE, analysis["angles"].get("left_knee_angle", 0), WR_YELLOW),
-        (WR_RIGHT_KNEE, analysis["angles"].get("right_knee_angle", 0), WR_YELLOW),
-        (WR_LEFT_ELBOW, analysis["angles"].get("left_elbow_angle", 0), WR_CYAN),
-        (WR_RIGHT_ELBOW, analysis["angles"].get("right_elbow_angle", 0), WR_CYAN),
+        (WR_LEFT_KNEE, analysis["angles"].get("left_knee_angle", 0), WR_YELLOW, "left_knee"),
+        (WR_RIGHT_KNEE, analysis["angles"].get("right_knee_angle", 0), WR_YELLOW, "right_knee"),
+        (WR_LEFT_ELBOW, analysis["angles"].get("left_elbow_angle", 0), WR_CYAN, "left_elbow"),
+        (WR_RIGHT_ELBOW, analysis["angles"].get("right_elbow_angle", 0), WR_CYAN, "right_elbow"),
     ]
 
-    for idx, value, color in primary:
+    for idx, value, color, joint_key in primary:
         if float(landmarks[idx].visibility) < 0.30:
             continue
         items.append({
@@ -918,6 +995,7 @@ def wr_build_angle_texts(raw_pts, landmarks, analysis):
             "x": float(np.clip(raw_pts[idx][0], 0.0, 1.0)),
             "y": float(np.clip(raw_pts[idx][1], 0.0, 1.0)),
             "color": color,
+            "joint_key": joint_key,
         })
     return items
 
@@ -987,7 +1065,9 @@ def process_warrior_pose_request(request):
             )
             smoothed_pts[idx] = [sx, sy, sz]
 
-        analysis = analyze_warrior_pose(smoothed_pts, landmarks, angles)
+        smoothed_angles = wr_angles_from_points(smoothed_pts)
+        analysis = analyze_warrior_pose(smoothed_pts, landmarks, smoothed_angles)
+        joint_states = wr_build_joint_states(analysis)
         points = wr_build_points_for_frontend(runtime, smoothed_pts, landmarks, analysis)
         angle_texts = wr_build_angle_texts(smoothed_pts, landmarks, analysis)
 
@@ -1008,6 +1088,7 @@ def process_warrior_pose_request(request):
                 details=wr_dedupe_list(details, max_items=3),
                 points=visible_points,
                 angle_texts=angle_texts,
+                joint_states=joint_states,
             )
 
         raw_model_label, confidence = wr_predict_model_label(features_df)
@@ -1054,6 +1135,7 @@ def process_warrior_pose_request(request):
                 details=wr_dedupe_list(tips, max_items=3),
                 points=points,
                 angle_texts=angle_texts,
+                joint_states=joint_states,
             )
 
         hold_time, best_hold = wr_update_hold_state(
@@ -1113,6 +1195,7 @@ def process_warrior_pose_request(request):
             perfect_hold=runtime.perfect_hold_count >= 3,
             points=points,
             angle_texts=angle_texts,
+            joint_states=joint_states,
             pose_ready=pose_flags["pose_ready"] or is_warrior,
             hold_ready=pose_flags["hold_ready"],
         )

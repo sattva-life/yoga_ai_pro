@@ -1,6 +1,8 @@
 from django.shortcuts import render
 from django.views.decorators.csrf import csrf_exempt
 from django.http import JsonResponse
+from django.conf import settings
+from django.core.mail import EmailMessage
 
 from .session_auth import app_api_login_required, app_login_required, get_current_user
 from .utils.tree_utility import process_yoga_pose_request
@@ -46,6 +48,51 @@ def goddess_live_page(request):
 
 def api_error(message, status=400):
     return JsonResponse({"success": False, "error": str(message)}, status=status)
+
+
+@app_api_login_required
+@csrf_exempt
+def email_pose_report(request):
+    if request.method != "POST":
+        return api_error("Only POST method allowed", status=405)
+
+    report_file = request.FILES.get("report")
+    if report_file is None:
+        return api_error("No report attached", status=400)
+
+    current_user = get_current_user(request)
+    if current_user is None:
+        return api_error("Authentication required", status=401)
+
+    pose_name = str(request.POST.get("pose") or "Yoga Pose").strip()[:80]
+    filename = report_file.name or f"Sattvalife_{pose_name.replace(' ', '_')}_Report.pdf"
+    content_type = report_file.content_type or "application/pdf"
+
+    if content_type != "application/pdf" and not filename.lower().endswith(".pdf"):
+        return api_error("Only PDF reports can be emailed", status=400)
+
+    subject = f"SattvaLife {pose_name} report"
+    message = (
+        f"Hello {current_user.name},\n\n"
+        f"Your {pose_name} practice report is attached to this email.\n\n"
+        "Keep practicing steadily.\n\n"
+        "Thanks,\n"
+        "SattvaLife Yoga"
+    )
+
+    try:
+        email = EmailMessage(
+            subject=subject,
+            body=message,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            to=[current_user.email],
+        )
+        email.attach(filename, report_file.read(), content_type)
+        email.send(fail_silently=False)
+    except Exception:
+        return api_error("Could not send report email. Please check email settings.", status=500)
+
+    return JsonResponse({"success": True, "message": "Report emailed successfully."})
 
 
 @app_api_login_required

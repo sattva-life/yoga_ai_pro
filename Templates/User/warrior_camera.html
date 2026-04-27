@@ -10,6 +10,8 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script>window.REPORT_EMAIL_URL = "{% url 'User:email_pose_report' %}";</script>
+    <script src="{% static 'js/report-email.js' %}"></script>
 
     <style>
         :root {
@@ -1076,6 +1078,8 @@
                         <button id="resumeBtn" class="control-btn btn-resume hidden">Resume</button>
                         <button id="downloadReportBtn" class="control-btn bg-blue-500 hidden hover:bg-blue-400">Download
                             Report</button>
+                        <button id="emailReportBtn" class="control-btn bg-teal-500 hidden hover:bg-teal-400">Email
+                            Report</button>
                     </div>
                 </div>
 
@@ -1207,6 +1211,7 @@
         const stopBtn = document.getElementById("stopBtn");
         const resumeBtn = document.getElementById("resumeBtn");
         const downloadReportBtn = document.getElementById("downloadReportBtn");
+        const emailReportBtn = document.getElementById("emailReportBtn");
 
         let stream = null; let requestInFlight = false; let predictIntervalId = null; let animationId = null;
         let isFrozen = false; let isStarting = false; let lastPayload = null; let lastGoodPayload = null;
@@ -1281,6 +1286,9 @@
             stopBtn.disabled = !stream;
             resumeBtn.classList.toggle("hidden", !isFrozen);
             downloadReportBtn.classList.toggle("hidden", !isFrozen);
+            emailReportBtn.classList.toggle("hidden", !isFrozen);
+            downloadReportBtn.disabled = !isFrozen;
+            emailReportBtn.disabled = !isFrozen;
         }
 
         function resizeOverlay() {
@@ -1316,6 +1324,25 @@
             let y = (Number(yNorm || 0) * drawH) + offsetY;
             x = containerW - x; // Mirrored
             return { x, y };
+        }
+
+        function smoothDisplayPoint(key, x, y) {
+            if (!DISPLAY_POINT_STATE.has(key)) {
+                DISPLAY_POINT_STATE.set(key, { x, y });
+                return { x, y };
+            }
+
+            const previous = DISPLAY_POINT_STATE.get(key);
+            const dx = x - previous.x;
+            const dy = y - previous.y;
+            const distance = Math.sqrt((dx * dx) + (dy * dy));
+            let alpha = 0.30;
+            if (distance > 44) alpha = 0.52;
+            else if (distance > 22) alpha = 0.40;
+
+            previous.x += dx * alpha;
+            previous.y += dy * alpha;
+            return previous;
         }
 
         function drawPoint(x, y, radius = 6, color = "#cfcfcf") {
@@ -1357,7 +1384,8 @@
             for (const pt of data.points) {
                 if (!pt || pt.visible === false) continue;
                 const mapped = mapVideoPointToCanvas(pt.x, pt.y);
-                drawPoint(mapped.x, mapped.y, pt.radius || 6, pt.color || "#cfcfcf");
+                const smoothed = smoothDisplayPoint(pt.name || `${pt.x}-${pt.y}`, mapped.x, mapped.y);
+                drawPoint(smoothed.x, smoothed.y, pt.radius || 6, pt.color || "#cfcfcf");
             }
             if (anglesVisible && Array.isArray(data.angle_texts)) {
                 for (const item of data.angle_texts) {
@@ -1567,6 +1595,7 @@
             freezeLayer.classList.remove("show"); freezeFrameImage.src = "";
             cameraFrame.classList.remove("perfect-ring"); isFrozen = false;
             perfectHoldFrames = 0; lostFrameCount = 0; spokenNumbers.clear();
+            DISPLAY_POINT_STATE.clear();
             clearSpeechState({ cancelActive: true });
             if (stream) {
                 startPredictionLoop();
@@ -1579,6 +1608,7 @@
         function resetUI() {
             lastPayload = null; lastGoodPayload = null; isFrozen = false;
             perfectHoldFrames = 0; lostFrameCount = 0; spokenNumbers.clear();
+            DISPLAY_POINT_STATE.clear();
             freezeLayer.classList.remove("show"); freezeFrameImage.src = "";
             cameraFrame.classList.remove("perfect-ring"); countdownOverlay.classList.add("hidden");
             clearOverlay();
@@ -1887,14 +1917,15 @@
             `;
         }
 
-        async function generatePDFReport() {
-            const originalButtonText = downloadReportBtn.textContent;
+        async function generatePDFReport(sendEmail = false) {
+            const activeButton = sendEmail ? emailReportBtn : downloadReportBtn;
+            const originalButtonText = activeButton.textContent;
             try {
                 if (!freezeFrameImage.src || !isFrozen) {
                     alert("Please complete the 10-second hold first to generate a full report."); return;
                 }
-                downloadReportBtn.disabled = true;
-                downloadReportBtn.textContent = "Preparing...";
+                activeButton.disabled = true;
+                activeButton.textContent = sendEmail ? "Sending..." : "Preparing...";
 
                 const score = Number((byId("scoreText").textContent || "0").replace(/[^\d.-]/g, "")) || 0;
                 const bestHold = byId("bestHoldText").textContent || "-";
@@ -1982,20 +2013,27 @@
                     heightLeft -= (297 - margin * 2);
                 }
 
-                pdf.save(`Sattvalife_Warrior_Report_${new Date().toISOString().split("T")[0]}.pdf`);
+                const filename = `Sattvalife_Warrior_Report_${new Date().toISOString().split("T")[0]}.pdf`;
+                if (sendEmail) {
+                    await window.sendPoseReportEmail({ pdf, filename, pose: reportData.pose });
+                    alert("Report sent to your registered email.");
+                } else {
+                    pdf.save(filename);
+                }
             } catch (error) {
                 console.error("PDF generation error:", error);
-                alert("Failed to generate report PDF.");
+                alert(sendEmail ? error.message || "Failed to email report PDF." : "Failed to generate report PDF.");
             } finally {
-                downloadReportBtn.disabled = false;
-                downloadReportBtn.textContent = originalButtonText;
+                activeButton.disabled = !isFrozen;
+                activeButton.textContent = originalButtonText;
             }
         }
 
         startBtn.addEventListener("click", startCamera);
         stopBtn.addEventListener("click", stopCamera);
         resumeBtn.addEventListener("click", resumeCamera);
-        downloadReportBtn.addEventListener("click", generatePDFReport);
+        downloadReportBtn.addEventListener("click", () => generatePDFReport(false));
+        emailReportBtn.addEventListener("click", () => generatePDFReport(true));
         window.addEventListener("resize", () => { resizeOverlay(); if (lastPayload && !isFrozen) drawOverlay(lastPayload); });
         resetUI();
     </script>

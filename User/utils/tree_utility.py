@@ -177,6 +177,8 @@ GREEN = "#00ff66"
 RED = "#ff3b30"
 YELLOW = "#ffd60a"
 GRAY = "#cfcfcf"
+TREE_DEGREE_SIGN = chr(176)
+TREE_FRONTEND_POINT_VISIBILITY_MIN = 0.18
 
 
 # =========================================================
@@ -357,16 +359,57 @@ def smooth_runtime_boolean(key, value, maxlen=BOOLEAN_HISTORY_SIZE):
     return smooth_boolean(BOOLEAN_HISTORY[key], value)
 
 
-def smooth_point(key, x, y):
+def smooth_point(key, x, y, visibility=1.0):
     if key not in POINT_HISTORY:
         POINT_HISTORY[key] = deque(maxlen=POINT_HISTORY_SIZE)
 
-    POINT_HISTORY[key].append((float(x), float(y)))
+    history = POINT_HISTORY[key]
+    current = np.array([float(x), float(y)], dtype=np.float32)
+    visibility = float(np.clip(visibility, 0.0, 1.0))
 
-    xs = [p[0] for p in POINT_HISTORY[key]]
-    ys = [p[1] for p in POINT_HISTORY[key]]
+    if visibility < TREE_FRONTEND_POINT_VISIBILITY_MIN and history:
+        last_x, last_y = history[-1]
+        return float(last_x), float(last_y)
 
-    return float(sum(xs) / len(xs)), float(sum(ys) / len(ys))
+    if not history:
+        history.append((float(current[0]), float(current[1])))
+        return float(current[0]), float(current[1])
+
+    previous = np.array(history[-1], dtype=np.float32)
+    delta = current - previous
+    distance = float(np.linalg.norm(delta))
+    max_step = 0.085 if visibility >= 0.65 else 0.045
+
+    if distance > max_step:
+        current = previous + (delta / (distance + 1e-6)) * max_step
+
+    alpha = 0.36 if visibility >= 0.65 else 0.22
+    smoothed = previous * (1.0 - alpha) + current * alpha
+    history.append((float(smoothed[0]), float(smoothed[1])))
+
+    return float(smoothed[0]), float(smoothed[1])
+
+
+def latest_tree_point(key, fallback_x, fallback_y):
+    history = POINT_HISTORY.get(key)
+    if history:
+        x, y = history[-1]
+        return float(x), float(y)
+    return float(fallback_x), float(fallback_y)
+
+
+def smooth_tree_points(raw_pts, landmarks):
+    smoothed_pts = raw_pts.copy()
+
+    for idx in SELECTED_POINTS:
+        key = f"tree_{idx}"
+        visibility = float(landmarks[idx].visibility)
+        if visibility >= TREE_FRONTEND_POINT_VISIBILITY_MIN or POINT_HISTORY.get(key):
+            sx, sy = smooth_point(key, raw_pts[idx][0], raw_pts[idx][1], visibility=visibility)
+            smoothed_pts[idx][0] = sx
+            smoothed_pts[idx][1] = sy
+
+    return smoothed_pts
 
 
 def clear_point_history():
@@ -1105,16 +1148,21 @@ def build_points_for_frontend(raw_pts, landmarks, analysis):
     for idx in SELECTED_POINTS:
         lm = landmarks[idx]
         visibility = float(lm.visibility)
+        key = f"tree_{idx}"
+        has_recent_point = bool(POINT_HISTORY.get(key))
 
-        if visibility < 0.18:
+        if visibility < TREE_FRONTEND_POINT_VISIBILITY_MIN and not has_recent_point:
             continue
+
+        sx, sy = latest_tree_point(key, raw_pts[idx][0], raw_pts[idx][1])
+        current_visible = visibility >= TREE_FRONTEND_POINT_VISIBILITY_MIN
 
         points.append({
             "name": POINT_NAME_MAP.get(idx, f"point_{idx}"),
-            "x": clip01(raw_pts[idx][0]),
-            "y": clip01(raw_pts[idx][1]),
+            "x": clip01(sx),
+            "y": clip01(sy),
             "color": base_color,
-            "radius": 6,
+            "radius": 6 if current_visible else 5,
             "visible": True,
             "visibility": round(visibility, 3),
         })
@@ -1133,13 +1181,15 @@ def build_angle_texts(raw_pts, landmarks, analysis):
 
     for idx, value, joint_key in mapping:
         lm = landmarks[idx]
-        if float(lm.visibility) < 0.18:
+        key = f"tree_{idx}"
+        if float(lm.visibility) < TREE_FRONTEND_POINT_VISIBILITY_MIN and not POINT_HISTORY.get(key):
             continue
+        sx, sy = latest_tree_point(key, raw_pts[idx][0], raw_pts[idx][1])
 
         items.append({
-            "text": f"{int(round(float(value)))}°",
-            "x": clip01(raw_pts[idx][0]),
-            "y": clip01(raw_pts[idx][1]),
+            "text": f"{int(round(float(value)))}{TREE_DEGREE_SIGN}",
+            "x": clip01(sx),
+            "y": clip01(sy),
             "color": YELLOW,
             "joint_key": joint_key,
         })
@@ -1217,10 +1267,11 @@ def process_yoga_pose_request(request):
 
         features_df, _, _ = build_feature_dataframe_from_landmarks(landmarks)
         raw_pts = np.array([[lm.x, lm.y, lm.z] for lm in landmarks], dtype=np.float32)
+        smoothed_pts = smooth_tree_points(raw_pts, landmarks)
 
         lm_dict = extract_raw_landmark_dict(landmarks)
         full_body_visible, visible_count, avg_visibility = check_body_visibility(lm_dict)
-        framing_feedback = check_frame_position(raw_pts)
+        framing_feedback = check_frame_position(smoothed_pts)
 
         if not full_body_visible:
             reset_tree_runtime_state()
@@ -1251,10 +1302,10 @@ def process_yoga_pose_request(request):
         predicted_label, confidence = predict_pose_label(features_df)
         stable_predicted_label = smooth_label(POSE_HISTORY, predicted_label)
 
-        analysis = analyze_tree_pose(raw_pts)
+        analysis = analyze_tree_pose(smoothed_pts)
         joint_states, _ = build_tree_joint_states(analysis)
-        points = build_points_for_frontend(raw_pts, landmarks, analysis)
-        angle_texts = build_angle_texts(raw_pts, landmarks, analysis)
+        points = build_points_for_frontend(smoothed_pts, landmarks, analysis)
+        angle_texts = build_angle_texts(smoothed_pts, landmarks, analysis)
 
         tree_like = is_tree_like(stable_predicted_label, confidence, analysis)
 
@@ -1302,7 +1353,7 @@ def process_yoga_pose_request(request):
             defect_label = choose_quality_label(analysis, "N/A", 0.0)
             defect_confidence = 0.0
 
-        update_stability_metrics(raw_pts)
+        update_stability_metrics(smoothed_pts)
         stability_tips, stability_penalty = get_stability_feedback()
 
         rule_score = analysis["score"]

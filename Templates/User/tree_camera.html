@@ -9,6 +9,8 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script>window.REPORT_EMAIL_URL = "{% url 'User:email_pose_report' %}";</script>
+    <script src="{% static 'js/report-email.js' %}"></script>
 
     <style>
         html,
@@ -1082,6 +1084,10 @@
                                 class="camera-btn bg-indigo-500 hover:bg-indigo-600 transition hidden">
                                 Report
                             </button>
+                            <button type="button" id="emailReportBtn" onclick="generatePDFReport(true)"
+                                class="camera-btn bg-teal-500 hover:bg-teal-600 transition hidden">
+                                Email Report
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -1149,6 +1155,7 @@
         const stopBtn = document.getElementById("stopBtn");
         const resumeBtn = document.getElementById("resumeBtn");
         const downloadReportBtn = document.getElementById("downloadReportBtn");
+        const emailReportBtn = document.getElementById("emailReportBtn");
 
         let stream = null;
         let isFrozen = false;
@@ -1229,10 +1236,12 @@
             stopBtn.disabled = !stream;
             resumeBtn.disabled = !stream || !isFrozen;
             downloadReportBtn.disabled = !stream || !isFrozen; 
+            emailReportBtn.disabled = !stream || !isFrozen;
             [startBtn, stopBtn, resumeBtn].forEach(btn => btn.classList.toggle("opacity-60", btn.disabled));
             
             resumeBtn.classList.toggle("hidden", !isFrozen);
             downloadReportBtn.classList.toggle("hidden", !isFrozen);
+            emailReportBtn.classList.toggle("hidden", !isFrozen);
         }
 
         function resizeOverlay() {
@@ -1301,9 +1310,9 @@
             const dy = Math.abs(y - prev.y);
             const dist = Math.sqrt(dx * dx + dy * dy);
 
-            let alpha = 0.42;
-            if (dist > 45) alpha = 0.82;
-            else if (dist > 20) alpha = 0.62;
+            let alpha = 0.30;
+            if (dist > 45) alpha = 0.54;
+            else if (dist > 20) alpha = 0.42;
 
             prev.x = prev.x + (x - prev.x) * alpha;
             prev.y = prev.y + (y - prev.y) * alpha;
@@ -2099,14 +2108,15 @@
             `;
         }
 
-        async function generatePDFReport() {
-            const originalButtonText = downloadReportBtn.textContent;
+        async function generatePDFReport(sendEmail = false) {
+            const activeButton = sendEmail ? emailReportBtn : downloadReportBtn;
+            const originalButtonText = activeButton.textContent;
             try {
                 if (!freezeFrameImage.src || !isFrozen) {
                     alert("Please complete the 10-second hold first to generate a full report."); return;
                 }
-                downloadReportBtn.disabled = true;
-                downloadReportBtn.textContent = "Preparing...";
+                activeButton.disabled = true;
+                activeButton.textContent = sendEmail ? "Sending..." : "Preparing...";
 
                 const score = Number((document.getElementById("scoreText").textContent || "0").replace(/[^\d.-]/g, "")) || 0;
                 const bestHold = document.getElementById("holdText").textContent || "-"; 
@@ -2194,13 +2204,19 @@
                     heightLeft -= (297 - margin * 2);
                 }
 
-                pdf.save(`Sattvalife_TreePose_Report_${new Date().toISOString().split("T")[0]}.pdf`);
+                const filename = `Sattvalife_TreePose_Report_${new Date().toISOString().split("T")[0]}.pdf`;
+                if (sendEmail) {
+                    await window.sendPoseReportEmail({ pdf, filename, pose: reportData.pose });
+                    alert("Report sent to your registered email.");
+                } else {
+                    pdf.save(filename);
+                }
             } catch (error) {
                 console.error("PDF generation error:", error);
-                alert("Failed to generate report PDF.");
+                alert(sendEmail ? error.message || "Failed to email report PDF." : "Failed to generate report PDF.");
             } finally {
-                downloadReportBtn.disabled = !stream || !isFrozen;
-                downloadReportBtn.textContent = originalButtonText;
+                activeButton.disabled = !stream || !isFrozen;
+                activeButton.textContent = originalButtonText;
             }
         }
     </script>

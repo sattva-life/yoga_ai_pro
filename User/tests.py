@@ -5,9 +5,12 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 
 from django.contrib.sessions.middleware import SessionMiddleware
+from django.core import mail
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase
+from django.test import Client, TestCase, override_settings
 
+from User.models import Users
+from User.session_auth import APP_USER_SESSION_KEY
 from User.utils import down_dog_utility as dd
 from User.utils import goddess_utility as gd
 from User.utils import tree_utility as tr
@@ -596,6 +599,12 @@ class TreeUtilityTests(TestCase):
     def parse_json(self, response):
         return json.loads(response.content.decode("utf-8"))
 
+    def make_fake_landmarks(self, visibility=0.95):
+        return [
+            SimpleNamespace(x=0.5, y=0.5, z=0.0, visibility=visibility)
+            for _ in range(33)
+        ]
+
     def build_analysis(self, standing_side="left", standing_leg=True, lifted_leg=True, knee_open=True, torso=True, hands_ready=True, left_elbow_ok=True):
         right_elbow_ok = True
         return {
@@ -728,6 +737,36 @@ class TreeUtilityTests(TestCase):
         self.assertNotIn("Step", analysis["main_feedback"])
         self.assertTrue(analysis["coach_text"])
 
+    def test_tree_points_are_smoothed_before_frontend_response(self):
+        tr.reset_tree_runtime_state()
+        landmarks = self.make_fake_landmarks()
+        first_frame = self.build_neutral_tree_points()
+        second_frame = first_frame.copy()
+        second_frame[tr.LEFT_KNEE] = [0.92, 0.18, 0.0]
+        analysis = self.build_analysis()
+        analysis["score"] = 92
+
+        tr.smooth_tree_points(first_frame, landmarks)
+        smoothed_second = tr.smooth_tree_points(second_frame, landmarks)
+        points = tr.build_points_for_frontend(smoothed_second, landmarks, analysis)
+        left_knee = next(point for point in points if point["name"] == "left_knee")
+
+        self.assertLess(smoothed_second[tr.LEFT_KNEE][0], second_frame[tr.LEFT_KNEE][0])
+        self.assertAlmostEqual(left_knee["x"], float(smoothed_second[tr.LEFT_KNEE][0]), places=3)
+
+    def test_tree_angle_texts_use_clean_degree_symbol(self):
+        tr.reset_tree_runtime_state()
+        landmarks = self.make_fake_landmarks()
+        raw_pts = self.build_neutral_tree_points()
+        tr.smooth_tree_points(raw_pts, landmarks)
+        analysis = self.build_analysis()
+
+        items = tr.build_angle_texts(raw_pts, landmarks, analysis)
+
+        self.assertTrue(items)
+        self.assertTrue(all(tr.TREE_DEGREE_SIGN in item["text"] for item in items))
+        self.assertTrue(all("Ã‚" not in item["text"] for item in items))
+
 
 class WarriorUtilityTests(TestCase):
     def build_request(self):
@@ -829,6 +868,7 @@ class WarriorUtilityTests(TestCase):
         self.assertTrue(items)
         self.assertTrue(all("Â" not in item["text"] for item in items))
         self.assertTrue(all(wr.WR_DEGREE_SIGN in item["text"] for item in items))
+        self.assertTrue(all(item.get("joint_key") for item in items))
 
     def test_warrior_points_keep_recently_visible_joint_markers(self):
         runtime = wr.WarriorRuntime()
@@ -843,8 +883,11 @@ class WarriorUtilityTests(TestCase):
 
         points = wr.wr_build_points_for_frontend(runtime, raw_pts, landmarks, self.build_analysis(front_side="left"))
         names = {point["name"] for point in points}
+        left_knee = next(point for point in points if point["name"] == "left_knee")
 
         self.assertIn("left_knee", names)
+        self.assertAlmostEqual(left_knee["x"], 0.2, places=3)
+        self.assertAlmostEqual(left_knee["y"], 0.6, places=3)
 
     def test_warrior_pose_flags_allow_hold_ready_for_balanced_pose(self):
         analysis = self.build_analysis()
@@ -853,3 +896,43 @@ class WarriorUtilityTests(TestCase):
         self.assertTrue(flags["pose_ready"])
         self.assertTrue(flags["good_pose_ready"])
         self.assertTrue(flags["hold_ready"])
+
+
+@override_settings(
+    EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+    DEFAULT_FROM_EMAIL="noreply@sattvalife.test",
+)
+class ReportEmailViewTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user = Users(
+            name="Asha",
+            email="asha@example.com",
+            address="Kochi",
+            status=Users.STATUS_ACCEPTED,
+            photo="user_photos/profile.jpg",
+        )
+        self.user.set_password("Password@123")
+        self.user.save()
+
+        session = self.client.session
+        session[APP_USER_SESSION_KEY] = self.user.pk
+        session.save()
+
+    def test_email_pose_report_sends_pdf_attachment_to_current_user(self):
+        report = SimpleUploadedFile(
+            "tree-report.pdf",
+            b"%PDF-1.4 report",
+            content_type="application/pdf",
+        )
+
+        response = self.client.post(
+            "/user/email-report/",
+            {"pose": "Tree Pose", "report": report},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, [self.user.email])
+        self.assertIn("Tree Pose", mail.outbox[0].subject)
+        self.assertEqual(mail.outbox[0].attachments[0][0], "tree-report.pdf")

@@ -10,6 +10,8 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script>window.REPORT_EMAIL_URL = "{% url 'User:email_pose_report' %}";</script>
+    <script src="{% static 'js/report-email.js' %}"></script>
 
     <style>
         :root {
@@ -1049,6 +1051,8 @@
                         <button id="resumeBtn" class="control-btn btn-resume hidden">Resume</button>
                         <button id="downloadReportBtn" class="control-btn bg-blue-500 hidden hover:bg-blue-400">Download
                             Report</button>
+                        <button id="emailReportBtn" class="control-btn bg-teal-500 hidden hover:bg-teal-400">Email
+                            Report</button>
                     </div>
                 </div>
 
@@ -1173,6 +1177,7 @@
         const resumeBtn = document.getElementById("resumeBtn");
         const toggleAnglesBtn = document.getElementById("toggleAnglesBtn");
         const downloadReportBtn = document.getElementById("downloadReportBtn");
+        const emailReportBtn = document.getElementById("emailReportBtn");
         const anglesSection = document.getElementById("anglesSection");
 
         const overlayBadgeText = document.getElementById("overlayBadgeText");
@@ -1300,6 +1305,9 @@
             stopBtn.disabled = !cameraState.stream;
             resumeBtn.classList.toggle("hidden", !cameraState.isFrozen);
             downloadReportBtn.classList.toggle("hidden", !cameraState.isFrozen);
+            emailReportBtn.classList.toggle("hidden", !cameraState.isFrozen);
+            downloadReportBtn.disabled = !cameraState.isFrozen;
+            emailReportBtn.disabled = !cameraState.isFrozen;
         }
 
         function resizeOverlay() {
@@ -2127,7 +2135,8 @@
         startBtn.addEventListener("click", startCamera);
         stopBtn.addEventListener("click", stopCamera);
         resumeBtn.addEventListener("click", resumeCamera);
-        downloadReportBtn.addEventListener("click", generatePDFReport);
+        downloadReportBtn.addEventListener("click", () => generatePDFReport(false));
+        emailReportBtn.addEventListener("click", () => generatePDFReport(true));
 
         window.addEventListener("resize", () => {
             resizeOverlay();
@@ -2439,15 +2448,16 @@
             }));
         }
 
-        async function generatePDFReport() {
-            const originalButtonText = downloadReportBtn.textContent;
+        async function generatePDFReport(sendEmail = false) {
+            const activeButton = sendEmail ? emailReportBtn : downloadReportBtn;
+            const originalButtonText = activeButton.textContent;
             try {
                 if (!freezeFrameImage.src) {
                     alert("No frozen perfect frame found. Hold the perfect pose first, then download the report.");
                     return;
                 }
-                downloadReportBtn.disabled = true;
-                downloadReportBtn.textContent = "Preparing...";
+                activeButton.disabled = true;
+                activeButton.textContent = sendEmail ? "Sending..." : "Preparing...";
 
                 const score = Number((byId("scoreText").textContent || "0").replace(/[^\d.-]/g, "")) || 0;
                 const confidence = byId("confidenceText").textContent || "-";
@@ -2547,13 +2557,19 @@
                 }
 
                 const dateStr = new Date().toISOString().split("T")[0];
-                pdf.save(`Sattvalife_Posture_Report_${dateStr}.pdf`);
+                const filename = `Sattvalife_Posture_Report_${dateStr}.pdf`;
+                if (sendEmail) {
+                    await window.sendPoseReportEmail({ pdf, filename, pose: reportData.pose });
+                    alert("Report sent to your registered email.");
+                } else {
+                    pdf.save(filename);
+                }
             } catch (error) {
                 console.error("PDF generation error:", error);
-                alert("Failed to generate report PDF. Check console for details.");
+                alert(sendEmail ? error.message || "Failed to email report PDF." : "Failed to generate report PDF. Check console for details.");
             } finally {
-                downloadReportBtn.disabled = !cameraState.isFrozen;
-                downloadReportBtn.textContent = originalButtonText;
+                activeButton.disabled = !cameraState.isFrozen;
+                activeButton.textContent = originalButtonText;
             }
         }
 

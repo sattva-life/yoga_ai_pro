@@ -6,6 +6,7 @@ app_name = "User"
 urlpatterns = [
     path("", views.HomePage, name="home_page"),
     path("camera/", views.camera_page, name="camera_page"),
+    path("email-report/", views.email_pose_report, name="email_pose_report"),
     path("predict-yoga-pose/", views.predict_yoga_pose, name="predict_yoga_pose"),
 
     path("down-dog-live/", views.down_dog_live_page, name="down_dog_live_page"),
@@ -14,6 +15,6 @@ urlpatterns = [
     path("goddess-live/", views.goddess_live_page, name="goddess_live_page"),
     path("predict-goddess-pose/", views.predict_goddess_pose, name="predict_goddess_pose"),
 
- path("warrior-live/", views.warrior_live_page, name="warrior_live_page"),
+    path("warrior-live/", views.warrior_live_page, name="warrior_live_page"),
     path("predict-warrior-pose/", views.predict_warrior_pose, name="predict_warrior_pose"),
-   ]
+]
