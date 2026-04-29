@@ -10,9 +10,9 @@
         alt="Yoga signup background"
         class="absolute inset-0 w-full h-full object-cover"
     >
-    <div class="absolute inset-0 bg-black/34"></div>
-    <div class="absolute inset-0 bg-gradient-to-r from-[#111111]/40 via-[#111111]/22 to-[#111111]/12"></div>
-    <div class="absolute inset-0 bg-gradient-to-br from-[#E88490]/20 via-[#FBECEF]/12 to-[#111111]/24"></div>
+    <div class="absolute inset-0 bg-black/24"></div>
+    <div class="absolute inset-0 bg-gradient-to-r from-[#111111]/30 via-[#111111]/14 to-[#111111]/6"></div>
+    <div class="absolute inset-0 bg-gradient-to-br from-[#E88490]/14 via-[#FBECEF]/8 to-[#111111]/14"></div>
 
     <div class="absolute top-[8%] left-[8%] w-[320px] h-[320px] bg-[#E88490]/18 rounded-full blur-3xl"></div>
     <div class="absolute bottom-[10%] right-[8%] w-[260px] h-[260px] bg-[#F6B6C0]/12 rounded-full blur-3xl"></div>
@@ -27,21 +27,24 @@
                 >
             </a>
 
-            <div class="bg-white/94 backdrop-blur-xl shadow-[0_20px_50px_-12px_rgba(0,0,0,0.35)] border border-white/70 rounded-[2.5rem] p-8 sm:p-10 lg:p-12 transition-all duration-700 hover:shadow-[0_25px_60px_-15px_rgba(0,0,0,0.45)]">
+            <div class="bg-[#FFF8F8]/78 backdrop-blur-md shadow-[0_24px_58px_-16px_rgba(0,0,0,0.46)] border border-white/60 rounded-[2.5rem] p-8 sm:p-10 lg:p-12 transition-all duration-700 hover:shadow-[0_28px_68px_-18px_rgba(0,0,0,0.54)]">
                 <div class="text-center mb-10">
                     <h1 class="text-3xl font-bold text-[#181818] mb-2">Create Your Account</h1>
-                    <p class="text-[15px] text-[#5F595C] font-normal">Join your personalized SattvaLife practice space.</p>
+                    <p class="text-[15px] text-[#2E282A] font-semibold">Join your personalized SattvaLife practice space.</p>
                 </div>
 
-                <div class="mb-6 rounded-2xl border border-[#F3DADF] bg-[#FFF7F8] px-4 py-3 text-sm text-[#6A6163]">
-                    After registration your account will stay under verification until an administrator approves it.
+                <div class="mb-6 rounded-2xl border border-white/80 border-l-4 border-l-[#E88490] bg-white/92 px-5 py-4 shadow-[0_12px_30px_-20px_rgba(17,17,17,0.45)]">
+                    <p class="text-xs font-extrabold uppercase tracking-[0.18em] text-[#B84F60]">Admin Verification</p>
+                    <p class="mt-1 text-[15px] font-bold leading-relaxed text-[#171113]">
+                        After registration your account will stay under verification until an administrator approves it.
+                    </p>
                 </div>
 
                 <form method="post" action="{% url 'Guest:signup' %}" enctype="multipart/form-data" class="space-y-6">
                     {% csrf_token %}
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
-                            <label for="signupName" class="block text-sm font-medium text-[#4F4A4C] mb-2">Name</label>
+                            <label for="signupName" class="block text-sm font-extrabold text-white mb-2 drop-shadow-[0_2px_4px_rgba(0,0,0,0.75)]">Name</label>
                             <input
                                 id="signupName"
                                 name="name"
@@ -49,12 +52,12 @@
                                 value="{{ name_value|default:'' }}"
                                 placeholder="Your full name"
                                 required
-                                class="w-full bg-[#FFF8F8] border border-[#EACFD5] rounded-xl px-4 py-3.5 text-[15px] text-[#232323] placeholder-[#877F82] focus:ring-2 focus:ring-[#E88490]/35 focus:border-[#E8C7CD] focus:bg-white transition-all duration-300 outline-none"
+                                class="w-full bg-[#FFF8F8]/94 border border-[#EACFD5] rounded-xl px-4 py-3.5 text-[15px] text-[#232323] placeholder-[#877F82] focus:ring-2 focus:ring-[#E88490]/35 focus:border-[#E8C7CD] focus:bg-white transition-all duration-300 outline-none"
                             >
                         </div>
 
                         <div>
-                            <label for="signupEmail" class="block text-sm font-medium text-[#4F4A4C] mb-2">Email</label>
+                            <label for="signupEmail" class="block text-sm font-extrabold text-white mb-2 drop-shadow-[0_2px_4px_rgba(0,0,0,0.75)]">Email</label>
                             <input
                                 id="signupEmail"
                                 name="email"
@@ -62,12 +65,12 @@
                                 value="{{ email_value|default:'' }}"
                                 placeholder="name@example.com"
                                 required
-                                class="w-full bg-[#FFF8F8] border border-[#EACFD5] rounded-xl px-4 py-3.5 text-[15px] text-[#232323] placeholder-[#877F82] focus:ring-2 focus:ring-[#E88490]/35 focus:border-[#E8C7CD] focus:bg-white transition-all duration-300 outline-none"
+                                class="w-full bg-[#FFF8F8]/94 border border-[#EACFD5] rounded-xl px-4 py-3.5 text-[15px] text-[#232323] placeholder-[#877F82] focus:ring-2 focus:ring-[#E88490]/35 focus:border-[#E8C7CD] focus:bg-white transition-all duration-300 outline-none"
                             >
                         </div>
 
                         <div>
-                            <label for="signupPassword" class="block text-sm font-medium text-[#4F4A4C] mb-2">Password</label>
+                            <label for="signupPassword" class="block text-sm font-extrabold text-white mb-2 drop-shadow-[0_2px_4px_rgba(0,0,0,0.75)]">Password</label>
                             <div class="relative">
                                 <input
                                     id="signupPassword"
@@ -76,7 +79,7 @@
                                     placeholder="Create a password"
                                     required
                                     minlength="8"
-                                    class="w-full bg-[#FFF8F8] border border-[#EACFD5] rounded-xl px-4 py-3.5 text-[15px] text-[#232323] placeholder-[#877F82] focus:ring-2 focus:ring-[#E88490]/35 focus:border-[#E8C7CD] focus:bg-white transition-all duration-300 outline-none pr-12"
+                                    class="w-full bg-[#FFF8F8]/94 border border-[#EACFD5] rounded-xl px-4 py-3.5 text-[15px] text-[#232323] placeholder-[#877F82] focus:ring-2 focus:ring-[#E88490]/35 focus:border-[#E8C7CD] focus:bg-white transition-all duration-300 outline-none pr-12"
                                 >
                                 <button type="button" data-toggle-password="signupPassword" class="absolute right-4 top-1/2 -translate-y-1/2 text-[#8D8689] hover:text-[#5F595C] focus:outline-none">
                                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
@@ -85,7 +88,7 @@
                         </div>
 
                         <div>
-                            <label for="signupConfirmPassword" class="block text-sm font-medium text-[#4F4A4C] mb-2">Confirm Password</label>
+                            <label for="signupConfirmPassword" class="block text-sm font-extrabold text-white mb-2 drop-shadow-[0_2px_4px_rgba(0,0,0,0.75)]">Confirm Password</label>
                             <div class="relative">
                                 <input
                                     id="signupConfirmPassword"
@@ -94,7 +97,7 @@
                                     placeholder="Repeat your password"
                                     required
                                     minlength="8"
-                                    class="w-full bg-[#FFF8F8] border border-[#EACFD5] rounded-xl px-4 py-3.5 text-[15px] text-[#232323] placeholder-[#877F82] focus:ring-2 focus:ring-[#E88490]/35 focus:border-[#E8C7CD] focus:bg-white transition-all duration-300 outline-none pr-12"
+                                    class="w-full bg-[#FFF8F8]/94 border border-[#EACFD5] rounded-xl px-4 py-3.5 text-[15px] text-[#232323] placeholder-[#877F82] focus:ring-2 focus:ring-[#E88490]/35 focus:border-[#E8C7CD] focus:bg-white transition-all duration-300 outline-none pr-12"
                                 >
                                 <button type="button" data-toggle-password="signupConfirmPassword" class="absolute right-4 top-1/2 -translate-y-1/2 text-[#8D8689] hover:text-[#5F595C] focus:outline-none">
                                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
@@ -104,26 +107,26 @@
                     </div>
 
                     <div>
-                        <label for="signupAddress" class="block text-sm font-medium text-[#4F4A4C] mb-2">Address</label>
+                        <label for="signupAddress" class="block text-sm font-extrabold text-white mb-2 drop-shadow-[0_2px_4px_rgba(0,0,0,0.75)]">Address</label>
                         <textarea
                             id="signupAddress"
                             name="address"
                             rows="4"
                             placeholder="Enter your address"
                             required
-                            class="w-full bg-[#FFF8F8] border border-[#EACFD5] rounded-xl px-4 py-3.5 text-[15px] text-[#232323] placeholder-[#877F82] focus:ring-2 focus:ring-[#E88490]/35 focus:border-[#E8C7CD] focus:bg-white transition-all duration-300 outline-none resize-y"
+                            class="w-full bg-[#FFF8F8]/94 border border-[#EACFD5] rounded-xl px-4 py-3.5 text-[15px] text-[#232323] placeholder-[#877F82] focus:ring-2 focus:ring-[#E88490]/35 focus:border-[#E8C7CD] focus:bg-white transition-all duration-300 outline-none resize-y"
                         >{{ address_value|default:'' }}</textarea>
                     </div>
 
                     <div>
-                        <label for="signupPhoto" class="block text-sm font-medium text-[#4F4A4C] mb-2">Photo</label>
+                        <label for="signupPhoto" class="block text-sm font-extrabold text-white mb-2 drop-shadow-[0_2px_4px_rgba(0,0,0,0.75)]">Photo</label>
                         <input
                             id="signupPhoto"
                             name="photo"
                             type="file"
                             accept="image/*"
                             required
-                            class="w-full bg-[#FFF8F8] border border-[#EACFD5] rounded-xl px-4 py-3.5 text-[15px] text-[#5F595C] file:mr-4 file:rounded-full file:border-0 file:bg-[#E88490] file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-[#D96C7A] focus:ring-2 focus:ring-[#E88490]/35 focus:border-[#E8C7CD] focus:bg-white transition-all duration-300 outline-none"
+                            class="w-full bg-white/94 border border-[#EACFD5] rounded-xl px-4 py-3.5 text-[15px] font-semibold text-[#21191B] file:mr-4 file:rounded-full file:border-0 file:bg-[#E88490] file:px-4 file:py-2 file:text-sm file:font-bold file:text-white hover:file:bg-[#D96C7A] focus:ring-2 focus:ring-[#E88490]/35 focus:border-[#E8C7CD] focus:bg-white transition-all duration-300 outline-none"
                         >
                     </div>
 
@@ -134,7 +137,7 @@
                 </form>
 
                 <div class="mt-8 text-center">
-                    <p class="text-[15px] text-[#5F595C] font-normal">Already have an account? <a href="{% url 'Guest:login' %}" class="text-[#D96C7A] font-medium hover:text-[#C45B69] transition-colors">Log in</a></p>
+                    <p class="text-[15px] text-white font-semibold drop-shadow-[0_2px_4px_rgba(0,0,0,0.75)]">Already have an account? <a href="{% url 'Guest:login' %}" class="text-[#FF9CAB] font-bold hover:text-white transition-colors">Log in</a></p>
                 </div>
             </div>
         </div>

@@ -504,6 +504,16 @@ class GoddessUtilityTests(TestCase):
         self.assertEqual(pose_eval["pose_label"], "Correct Goddess")
         self.assertTrue(flags["hold_ready"])
 
+    def test_goddess_display_model_label_follows_final_pose_when_model_lags(self):
+        self.assertEqual(
+            gd.goddess_display_model_label("Not_Goddess", "Correct Goddess", pose_ready=True),
+            "Goddess",
+        )
+        self.assertEqual(
+            gd.goddess_display_model_label("Not_Goddess", "Not Goddess Pose", pose_ready=False),
+            "Not_Goddess",
+        )
+
     def test_goddess_prayer_hands_with_one_noisy_upper_body_check_still_counts(self):
         analysis = self.build_analysis(
             left_knee_ok=True,
@@ -888,6 +898,26 @@ class WarriorUtilityTests(TestCase):
         self.assertIn("left_knee", names)
         self.assertAlmostEqual(left_knee["x"], 0.2, places=3)
         self.assertAlmostEqual(left_knee["y"], 0.6, places=3)
+
+    def test_warrior_visible_point_jump_snaps_to_current_body(self):
+        runtime = wr.WarriorRuntime()
+        runtime.point_history["wr_25"] = [(0.1, 0.1, 0.0)]
+
+        x, y, z = wr.wr_smooth_point(runtime, "wr_25", 0.55, 0.56, 0.0, visibility=0.95)
+
+        self.assertAlmostEqual(x, 0.55, places=3)
+        self.assertAlmostEqual(y, 0.56, places=3)
+        self.assertAlmostEqual(z, 0.0, places=3)
+
+    def test_warrior_display_model_label_follows_final_pose_when_model_lags(self):
+        self.assertEqual(
+            wr.wr_display_model_label("Not_Warrior", "Correct Warrior", pose_ready=True),
+            "Warrior",
+        )
+        self.assertEqual(
+            wr.wr_display_model_label("Not_Warrior", "Not Warrior Pose", pose_ready=False),
+            "Not_Warrior",
+        )
 
     def test_warrior_pose_flags_allow_hold_ready_for_balanced_pose(self):
         analysis = self.build_analysis()

@@ -1563,12 +1563,12 @@
             }
         }
 
-        function clearSpeechState({ cancelActive = false } = {}) {
+        function clearSpeechState({ cancelActive = false, preserveCooldowns = false } = {}) {
             if (cancelActive && synth) synth.cancel();
             speechState.currentPriority = 0;
             speechState.activeUtterance = null;
             speechState.activeText = "";
-            speechState.recentMessages.clear();
+            if (!preserveCooldowns) speechState.recentMessages.clear();
             window.activeUtterance = null;
         }
 
@@ -1611,6 +1611,7 @@
             holdState.completed = false;
             countdownText.textContent = String(TARGET_HOLD_SECONDS);
             countdownOverlay.classList.remove("hidden");
+            speakFeedback(`Your pose is correct, hold for ${TARGET_HOLD_SECONDS} seconds.`, SPEECH_PRIORITY_HOLD);
         }
 
         function pauseHoldCountdown(now) {
@@ -1644,6 +1645,7 @@
             updateHoldReadouts();
             freezeCurrentFrame();
             speakFeedback("Great job! You completed Downward Dog.", SPEECH_PRIORITY_ALERT);
+            setCameraBanner("10 Second Hold Complete!");
         }
 
         function advanceHoldCountdown(now = performance.now()) {
@@ -1653,7 +1655,7 @@
             holdState.bestHoldMs = Math.max(holdState.bestHoldMs, holdState.accumulatedMs);
 
             const remainingMs = Math.max(0, TARGET_HOLD_MS - holdState.accumulatedMs);
-            const countdownNumber = Math.ceil(remainingMs / 1000);
+            const countdownNumber = Math.max(1, Math.ceil(remainingMs / 1000));
 
             countdownOverlay.classList.remove("hidden");
             countdownText.textContent = String(countdownNumber);
@@ -1661,7 +1663,7 @@
             if (
                 holdState.lastCountdownNumber !== null &&
                 countdownNumber < holdState.lastCountdownNumber &&
-                countdownNumber > 0
+                countdownNumber <= 7
             ) {
                 speakFeedback(String(countdownNumber), SPEECH_PRIORITY_ALERT);
             }
@@ -1925,7 +1927,7 @@
             pollState.latestRequestId += 1;
 
             resetHoldState({ preserveBest: true });
-            clearSpeechState({ cancelActive: true });
+            clearSpeechState({ cancelActive: true, preserveCooldowns: true });
             resetDisplayPointState();
             clearOverlay();
 
@@ -2090,15 +2092,15 @@
             pruneSpeechCooldowns(now);
 
             const lastSpokenAt = speechState.recentMessages.get(cooldownKey);
-            if (lastSpokenAt && (now - lastSpokenAt) < SPEECH_COOLDOWN_MS) {
+            if (priority < SPEECH_PRIORITY_ALERT && lastSpokenAt && (now - lastSpokenAt) < SPEECH_COOLDOWN_MS) {
                 return false;
             }
 
-            if (synth.speaking && priority < SPEECH_PRIORITY_ALERT) {
+            if (synth.speaking && priority <= speechState.currentPriority && priority < SPEECH_PRIORITY_ALERT) {
                 return false;
             }
 
-            if (synth.speaking && priority >= SPEECH_PRIORITY_ALERT) {
+            if (synth.speaking) {
                 synth.cancel();
             }
 

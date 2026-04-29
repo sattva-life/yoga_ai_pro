@@ -924,6 +924,17 @@ def goddess_is_pose_like(model_label, model_confidence, checks):
         return True
     return False
 
+def goddess_display_model_label(model_label, pose_name, pose_ready=False):
+    label_text = str(model_label or "Unknown")
+    pose_text = str(pose_name or "").lower()
+    label_lower = label_text.lower()
+
+    if "goddess" in pose_text and pose_ready and "not" in label_lower:
+        return "Goddess"
+    if pose_text == "correct goddess" and ("goddess" not in label_lower or "not" in label_lower):
+        return "Goddess"
+    return label_text
+
 def quality_from_score(score):
     if score >= 95:
         return "Perfect_Goddess"
@@ -1126,6 +1137,7 @@ def process_goddess_pose_request(request):
             return goddess_pose_success(
                 pose="Not Goddess Pose",
                 model_pose=stable_pose_label,
+                raw_model_pose=stable_pose_label,
                 quality="Not_Ready",
                 status="warning",
                 score=max(0, min(65, stable_score)),
@@ -1163,10 +1175,16 @@ def process_goddess_pose_request(request):
             "Needs_Correction" if (pose_flags["pose_ready"] or is_goddess) else
             "Not_Ready"
         )
+        display_model_label = goddess_display_model_label(
+            stable_pose_label,
+            pose_name,
+            pose_ready=pose_flags["pose_ready"] or is_goddess,
+        )
 
         return goddess_pose_success(
             pose=pose_name,
-            model_pose=stable_pose_label,
+            model_pose=display_model_label,
+            raw_model_pose=stable_pose_label,
             quality=quality,
             status=status,
             score=stable_score,

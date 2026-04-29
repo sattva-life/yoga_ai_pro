@@ -1183,6 +1183,7 @@
     <script>
         const synth = window.speechSynthesis;
         const SPEECH_COOLDOWN_MS = 30000;
+        const SPEECH_PRIORITY = { NORMAL: 0, HOLD_START: 1, ALERT: 2 };
         const speechState = {
             cooldowns: new Map(),
             currentPriority: 0,
@@ -1215,10 +1216,22 @@
 
         let stream = null; let requestInFlight = false; let predictIntervalId = null; let animationId = null;
         let isFrozen = false; let isStarting = false; let lastPayload = null; let lastGoodPayload = null;
-        let perfectHoldFrames = 0; let lostFrameCount = 0; let anglesVisible = false; let spokenNumbers = new Set();
+        let lostFrameCount = 0; let anglesVisible = false;
+        let requestSeq = 0; let activeController = null; let predictionStopped = true; let forceBackendReset = true;
 
-        const TARGET_HOLD_SECONDS = 10; const INTRO_DURATION_SECONDS = 3.0;
-        const PREDICT_EVERY_MS = 200; const JPEG_QUALITY = 0.86; const MAX_LOST_FRAMES = 12;
+        const TARGET_HOLD_SECONDS = 10;
+        const HOLD_PAUSE_SCORE = 82;
+        const HOLD_ABORT_SCORE = 70;
+        const PREDICT_EVERY_MS = 220; const JPEG_QUALITY = 0.72; const MAX_LOST_FRAMES = 12;
+
+        const holdState = {
+            isActive: false,
+            accumulatedMs: 0,
+            lastTickAt: 0,
+            lastCountdownNumber: null,
+            bestHoldMs: 0,
+            completed: false
+        };
 
         const DISPLAY_POINT_STATE = new Map();
         const REPORT_LOGO = "{% static 'images/sattvalife-logo.png' %}";
@@ -1259,11 +1272,11 @@
             }
         }
 
-        function clearSpeechState({ cancelActive = false } = {}) {
+        function clearSpeechState({ cancelActive = false, preserveCooldowns = false } = {}) {
             if (cancelActive && synth) synth.cancel();
             speechState.currentPriority = 0;
             speechState.activeUtterance = null;
-            speechState.cooldowns.clear();
+            if (!preserveCooldowns) speechState.cooldowns.clear();
             window.activeUtterance = null;
         }
 
@@ -1336,9 +1349,15 @@
             const dx = x - previous.x;
             const dy = y - previous.y;
             const distance = Math.sqrt((dx * dx) + (dy * dy));
-            let alpha = 0.30;
-            if (distance > 44) alpha = 0.52;
-            else if (distance > 22) alpha = 0.40;
+            if (distance > 90) {
+                previous.x = x;
+                previous.y = y;
+                return previous;
+            }
+
+            let alpha = 0.68;
+            if (distance > 44) alpha = 0.90;
+            else if (distance > 22) alpha = 0.80;
 
             previous.x += dx * alpha;
             previous.y += dy * alpha;
@@ -1432,6 +1451,94 @@
             }
         }
 
+        function getCurrentHoldSeconds() {
+            return holdState.accumulatedMs / 1000;
+        }
+
+        function getBestHoldSeconds() {
+            return holdState.bestHoldMs / 1000;
+        }
+
+        function resetHoldState(clearBest = false) {
+            holdState.isActive = false;
+            holdState.accumulatedMs = 0;
+            holdState.lastTickAt = 0;
+            holdState.lastCountdownNumber = null;
+            holdState.completed = false;
+            if (clearBest) holdState.bestHoldMs = 0;
+            countdownOverlay.classList.add("hidden");
+            countdownText.textContent = TARGET_HOLD_SECONDS;
+        }
+
+        function updateHoldReadouts() {
+            const current = getCurrentHoldSeconds();
+            const best = getBestHoldSeconds();
+            setText("holdText", `${current.toFixed(1)}s`);
+            setText("bestHoldText", `${best.toFixed(1)}s`);
+            setText("miniHold", `${current.toFixed(1)}s`);
+            setText("miniBestHold", `${best.toFixed(1)}s`);
+            setText("summaryHold", `${current.toFixed(1)}s`);
+        }
+
+        function updateLocalHold(data, validFrame) {
+            const now = performance.now();
+            const score = Number(data?.score || 0);
+            const canAdvance = validFrame && data?.hold_ready === true;
+            const shouldPause = validFrame && !canAdvance && score >= HOLD_PAUSE_SCORE && holdState.isActive;
+            const shouldAbort = !validFrame || score < HOLD_ABORT_SCORE || data?.success === false;
+
+            if (holdState.completed) {
+                updateHoldReadouts();
+                return;
+            }
+
+            if (canAdvance) {
+                if (!holdState.isActive) {
+                    holdState.isActive = true;
+                    holdState.lastTickAt = now;
+                    holdState.lastCountdownNumber = null;
+                    speakFeedback(`Your pose is correct, hold for ${TARGET_HOLD_SECONDS} seconds.`, SPEECH_PRIORITY.HOLD_START);
+                } else {
+                    holdState.accumulatedMs += Math.max(0, now - holdState.lastTickAt);
+                    holdState.lastTickAt = now;
+                }
+
+                holdState.bestHoldMs = Math.max(holdState.bestHoldMs, holdState.accumulatedMs);
+                const remainingMs = Math.max(0, TARGET_HOLD_SECONDS * 1000 - holdState.accumulatedMs);
+                const currentSecond = Math.max(1, Math.ceil(remainingMs / 1000));
+                countdownOverlay.classList.remove("hidden");
+                countdownText.textContent = currentSecond;
+
+                if (currentSecond !== holdState.lastCountdownNumber && currentSecond <= 7) {
+                    holdState.lastCountdownNumber = currentSecond;
+                    speakFeedback(currentSecond.toString(), SPEECH_PRIORITY.ALERT);
+                } else if (holdState.lastCountdownNumber === null) {
+                    holdState.lastCountdownNumber = TARGET_HOLD_SECONDS;
+                }
+
+                if (!isFrozen && holdState.accumulatedMs >= TARGET_HOLD_SECONDS * 1000) {
+                    holdState.completed = true;
+                    holdState.accumulatedMs = TARGET_HOLD_SECONDS * 1000;
+                    holdState.bestHoldMs = Math.max(holdState.bestHoldMs, holdState.accumulatedMs);
+                    updateHoldReadouts();
+                    countdownOverlay.classList.add("hidden");
+                    freezeCurrentFrame();
+                    speakFeedback("Great job! You completed the Warrior pose.", SPEECH_PRIORITY.ALERT);
+                    setCameraBanner("10 Second Hold Complete!");
+                    return;
+                }
+            } else if (shouldPause) {
+                holdState.lastTickAt = now;
+                countdownOverlay.classList.remove("hidden");
+            } else if (shouldAbort) {
+                resetHoldState(false);
+            } else {
+                resetHoldState(false);
+            }
+
+            updateHoldReadouts();
+        }
+
         function updateCoachingCard(status) {
             const mainCard = byId("mainFeedbackCard");
             const guidanceCard = byId("guidanceCard");
@@ -1456,10 +1563,10 @@
             const cooldownKey = spokenText.toLowerCase();
             pruneSpeechCooldowns(now);
             const lastSpokenAt = speechState.cooldowns.get(cooldownKey) || 0;
-            if (priority < 2 && (now - lastSpokenAt) < SPEECH_COOLDOWN_MS) return false;
+            if (priority < SPEECH_PRIORITY.ALERT && (now - lastSpokenAt) < SPEECH_COOLDOWN_MS) return false;
             if (synth.speaking) {
                 if (priority < speechState.currentPriority) return false;
-                if (priority !== 2 && speechState.currentPriority !== 2) synth.cancel();
+                if (priority !== SPEECH_PRIORITY.ALERT && speechState.currentPriority !== SPEECH_PRIORITY.ALERT) synth.cancel();
             }
             const utterance = new SpeechSynthesisUtterance(spokenText);
             utterance.rate = 1.0; utterance.pitch = 1.0;
@@ -1482,7 +1589,9 @@
 
         async function captureAndPredict() {
             if (!stream || isFrozen || requestInFlight || !video.videoWidth) return;
+            const currentSeq = ++requestSeq;
             requestInFlight = true;
+            activeController = new AbortController();
             try {
                 captureCanvas.width = video.videoWidth; captureCanvas.height = video.videoHeight;
                 captureCanvas.getContext("2d", { alpha: false }).drawImage(video, 0, 0, captureCanvas.width, captureCanvas.height);
@@ -1491,9 +1600,18 @@
 
                 const fd = new FormData();
                 fd.append("image", blob, "frame.jpg");
+                const shouldResetBackend = forceBackendReset;
+                if (shouldResetBackend) {
+                    fd.append("reset", "true");
+                }
 
-                const res = await fetch("{% url 'User:predict_warrior_pose' %}", { method: "POST", body: fd });
+                const res = await fetch("{% url 'User:predict_warrior_pose' %}", {
+                    method: "POST",
+                    body: fd,
+                    signal: activeController.signal
+                });
                 const rawText = await res.text();
+                if (currentSeq !== requestSeq || predictionStopped || isFrozen) return;
 
                 if (!res.ok) {
                     setText("liveInstructionText", "Server request failed");
@@ -1503,7 +1621,9 @@
                 }
 
                 const data = JSON.parse(rawText);
+                if (currentSeq !== requestSeq || predictionStopped || isFrozen) return;
                 if (data && data.success) {
+                    if (shouldResetBackend) forceBackendReset = false;
                     updateUI(data);
                 } else {
                     setText("liveInstructionText", data?.error || "Server error");
@@ -1511,15 +1631,45 @@
                     setText("frameStateText", "Backend Error");
                 }
             } catch (err) {
+                if (err?.name === "AbortError") return;
                 console.error("captureAndPredict error:", err);
             } finally {
-                requestInFlight = false;
+                if (currentSeq === requestSeq) {
+                    requestInFlight = false;
+                    activeController = null;
+                }
             }
         }
 
         function startPredictionLoop() {
-            if (predictIntervalId) clearInterval(predictIntervalId);
-            predictIntervalId = setInterval(captureAndPredict, PREDICT_EVERY_MS);
+            stopPredictionLoop(false);
+            predictionStopped = false;
+
+            const loop = async () => {
+                if (predictionStopped || !stream || isFrozen) return;
+                await captureAndPredict();
+                if (!predictionStopped && stream && !isFrozen) {
+                    predictIntervalId = window.setTimeout(loop, PREDICT_EVERY_MS);
+                }
+            };
+
+            predictIntervalId = window.setTimeout(loop, 0);
+        }
+
+        function stopPredictionLoop(abortActive = true) {
+            predictionStopped = true;
+            if (predictIntervalId) {
+                clearTimeout(predictIntervalId);
+                predictIntervalId = null;
+            }
+            if (abortActive && activeController) {
+                activeController.abort();
+            }
+            if (abortActive) {
+                requestSeq++;
+                requestInFlight = false;
+                activeController = null;
+            }
         }
 
         function startRenderLoop() {
@@ -1539,10 +1689,10 @@
 
         async function startCamera() {
             if (stream || isStarting) return;
-            isStarting = true; setButtonsState();
+            isStarting = true; forceBackendReset = true; predictionStopped = false; setButtonsState();
             try {
                 stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
+                    video: { facingMode: "user", width: { ideal: 960 }, height: { ideal: 540 } },
                     audio: false
                 });
                 video.srcObject = stream;
@@ -1566,7 +1716,7 @@
         }
 
         function stopCamera() {
-            if (predictIntervalId) clearInterval(predictIntervalId);
+            stopPredictionLoop(true);
             if (animationId) cancelAnimationFrame(animationId);
             if (stream) stream.getTracks().forEach(track => track.stop());
             clearSpeechState({ cancelActive: true });
@@ -1585,18 +1735,24 @@
             freezeLayer.classList.add("show");
             cameraFrame.classList.add("perfect-ring");
             isFrozen = true;
-            if (predictIntervalId) clearInterval(predictIntervalId);
+            stopPredictionLoop(true);
             setCameraBanner("Perfect pose paused");
             setText("frameStateText", "Perfect Hold");
             setButtonsState();
         }
 
         function resumeCamera() {
+            stopPredictionLoop(true);
             freezeLayer.classList.remove("show"); freezeFrameImage.src = "";
             cameraFrame.classList.remove("perfect-ring"); isFrozen = false;
-            perfectHoldFrames = 0; lostFrameCount = 0; spokenNumbers.clear();
+            lostFrameCount = 0;
             DISPLAY_POINT_STATE.clear();
-            clearSpeechState({ cancelActive: true });
+            forceBackendReset = true;
+            lastPayload = null;
+            lastGoodPayload = null;
+            resetHoldState(false);
+            updateHoldReadouts();
+            clearSpeechState({ cancelActive: true, preserveCooldowns: true });
             if (stream) {
                 startPredictionLoop();
                 setCameraBanner("Live analysis running");
@@ -1607,10 +1763,14 @@
 
         function resetUI() {
             lastPayload = null; lastGoodPayload = null; isFrozen = false;
-            perfectHoldFrames = 0; lostFrameCount = 0; spokenNumbers.clear();
+            lostFrameCount = 0;
             DISPLAY_POINT_STATE.clear();
+            forceBackendReset = true;
+            requestInFlight = false;
+            activeController = null;
             freezeLayer.classList.remove("show"); freezeFrameImage.src = "";
             cameraFrame.classList.remove("perfect-ring"); countdownOverlay.classList.add("hidden");
+            resetHoldState(true);
             clearOverlay();
 
             setText("poseText", "-"); setText("statusText", "Waiting");
@@ -1648,11 +1808,8 @@
             const quality = String(data.quality || "-").replaceAll("_", " ");
             const feedback = data.feedback || "Adjust posture";
             const coachText = data.coach_text || feedback || "Follow the guidance";
-            const holdTime = Number(data.hold_time || 0); const bestHoldTime = Number(data.best_hold_time || 0);
             const poseReady = data.pose_ready === true;
-            const holdReady = data.hold_ready === true;
 
-            const canStartHold = Boolean(data.perfect_hold) || holdReady || (String(status).toLowerCase().includes("perfect") && score >= 92);
             const hasUsablePoints = Array.isArray(data.points) && data.points.length >= 6;
             const weakConfidence = confidence < 0.18 && !poseReady && score < 70;
             const poseLower = String(pose || "").toLowerCase();
@@ -1669,24 +1826,18 @@
             setText("poseText", pose); setText("statusText", status);
             setText("confidenceText", `${(confidence * 100).toFixed(1)}%`);
             setText("scoreText", data.score ?? "-");
-            setText("holdText", `${holdTime.toFixed(1)}s`);
-            setText("bestHoldText", `${bestHoldTime.toFixed(1)}s`);
             setText("qualityText", quality); setText("modelPoseText", data.model_pose || "-");
             setText("liveStatusText", status); setText("liveScoreText", data.score ?? "-");
             setText("rightQualityText", quality); setText("frameStateText", isFrozen ? "Paused" : "Live");
             setText("liveInstructionText", feedback); setText("guidanceHeadline", coachText);
-
-            if (!canStartHold && !isFrozen) speakFeedback(feedback, 0);
 
             setText("leftKneeAngle", data.angles?.left_knee_angle ?? "-");
             setText("rightKneeAngle", data.angles?.right_knee_angle ?? "-");
             setText("leftElbowAngle", data.angles?.left_elbow_angle ?? "-");
             setText("rightElbowAngle", data.angles?.right_elbow_angle ?? "-");
 
-            setText("miniPose", pose); setText("miniHold", `${holdTime.toFixed(1)}s`);
-            setText("miniBestHold", `${bestHoldTime.toFixed(1)}s`);
+            setText("miniPose", pose);
             setText("summaryConfidence", `${(confidence * 100).toFixed(0)}%`);
-            setText("summaryHold", `${holdTime.toFixed(1)}s`);
 
             setHTML("detailsList", (data.details || []).map(d => `<li>${String(d).replaceAll("_", " ")}</li>`).join("") || "<li>Good posture</li>");
 
@@ -1698,39 +1849,11 @@
             else if (lastGoodPayload && lostFrameCount <= MAX_LOST_FRAMES) drawOverlay(lastGoodPayload);
             else clearOverlay();
 
-            if (canStartHold) {
-                if (perfectHoldFrames === 0) {
-                    speakFeedback(`Your pose is correct, hold for ${TARGET_HOLD_SECONDS} seconds.`, 1);
-                    spokenNumbers.clear();
-                }
-                perfectHoldFrames++;
-                countdownOverlay.classList.remove("hidden");
+            const validHoldFrame = !isBadFrame && poseReady && poseLower.includes("warrior") && !poseLower.includes("not warrior");
+            updateLocalHold(data, validHoldFrame);
 
-                if (holdTime < INTRO_DURATION_SECONDS) {
-                    countdownText.innerHTML = `<span style="font-size: 2.2rem; line-height: 1;">Get<br>Ready</span>`;
-                } else {
-                    const effectiveHoldTime = holdTime - INTRO_DURATION_SECONDS;
-                    const remaining = Math.max(0, TARGET_HOLD_SECONDS - effectiveHoldTime);
-                    const currentSecond = Math.ceil(remaining);
-                    countdownText.innerHTML = currentSecond;
-
-                    if (currentSecond <= 10 && currentSecond > 0 && !spokenNumbers.has(currentSecond)) {
-                        spokenNumbers.add(currentSecond);
-                        speakFeedback(currentSecond.toString(), 2);
-                    }
-
-                    if (!isFrozen && effectiveHoldTime >= TARGET_HOLD_SECONDS) {
-                        countdownOverlay.classList.add("hidden");
-                        freezeCurrentFrame();
-                        speakFeedback("Great job! You completed the Warrior pose.", 1);
-                    }
-                }
-            } else {
-                if (holdTime === 0) {
-                    if (perfectHoldFrames > 0 && synth) clearSpeechState({ cancelActive: true });
-                    perfectHoldFrames = 0; spokenNumbers.clear();
-                    countdownOverlay.classList.add("hidden");
-                }
+            if (!holdState.isActive && !holdState.completed && !isFrozen) {
+                speakFeedback(feedback, SPEECH_PRIORITY.NORMAL);
             }
         }
 

@@ -24,7 +24,7 @@ WR_FEEDBACK_HISTORY_SIZE = 8
 WR_STABILITY_HISTORY_SIZE = 20
 WR_VISIBILITY_HISTORY_SIZE = 8
 WR_DETECTION_HISTORY_SIZE = 8
-WR_POINT_HISTORY_SIZE = 6
+WR_POINT_HISTORY_SIZE = 4
 WR_FRONTEND_POINT_VISIBILITY_MIN = 0.18
 WR_SESSION_RUNTIME_KEY = "warrior_runtime_v2"
 WR_DEGREE_SIGN = chr(176)
@@ -137,10 +137,10 @@ def wr_reset_runtime_state(runtime):
 mp_pose = mp.solutions.pose
 warrior_pose_detector = mp_pose.Pose(
     static_image_mode=False,
-    model_complexity=2,
+    model_complexity=1,
     smooth_landmarks=True,
-    min_detection_confidence=0.56,
-    min_tracking_confidence=0.56,
+    min_detection_confidence=0.52,
+    min_tracking_confidence=0.52,
 )
 
 
@@ -426,12 +426,17 @@ def wr_smooth_point(runtime, key, x, y, z, visibility=1.0):
     prev = np.array(history[-1], dtype=np.float32)
     delta = current - prev
     distance = float(np.linalg.norm(delta[:2]))
-    max_step = 0.085 if visibility >= 0.65 else 0.045
+
+    if visibility >= 0.70 and distance > 0.28:
+        history.append(tuple(current))
+        return float(current[0]), float(current[1]), float(current[2])
+
+    max_step = 0.18 if visibility >= 0.65 else 0.10
 
     if distance > max_step:
         current = prev + (delta / (float(np.linalg.norm(delta)) + 1e-6)) * max_step
 
-    alpha = 0.40 if visibility >= 0.65 else 0.24
+    alpha = 0.72 if visibility >= 0.65 else 0.48
 
     smoothed = prev * (1.0 - alpha) + current * alpha
     history.append(tuple(smoothed))
@@ -805,6 +810,18 @@ def wr_is_warrior_like(model_label, model_confidence, analysis, defect_label="Un
     )
 
 
+def wr_display_model_label(model_label, pose_name, pose_ready=False):
+    label_text = str(model_label or "Unknown")
+    pose_text = str(pose_name or "").lower()
+    label_lower = label_text.lower()
+
+    if "warrior" in pose_text and pose_ready and "not" in label_lower:
+        return "Warrior"
+    if pose_text == "correct warrior" and ("warrior" not in label_lower or "not" in label_lower):
+        return "Warrior"
+    return label_text
+
+
 # =========================================================
 # STABILITY / HOLD / QUALITY
 # =========================================================
@@ -1007,6 +1024,9 @@ def process_warrior_pose_request(request):
     runtime = wr_get_runtime(request)
 
     try:
+        if request.POST.get("reset") == "true":
+            wr_reset_runtime_state(runtime)
+
         uploaded_file = request.FILES["image"]
         frame = wr_read_uploaded_image(uploaded_file)
         if frame is None:
@@ -1124,6 +1144,7 @@ def process_warrior_pose_request(request):
             return wr_pose_success(
                 pose="Not Warrior Pose",
                 model_pose=stable_model_label,
+                raw_model_pose=stable_model_label,
                 quality="Not_Ready",
                 feedback=analysis.get("main_feedback", "Move into Warrior II."),
                 coach_text=analysis.get("main_feedback", "Move into Warrior II."),
@@ -1140,7 +1161,7 @@ def process_warrior_pose_request(request):
 
         hold_time, best_hold = wr_update_hold_state(
             runtime,
-            pose_flags["good_pose_ready"] or pose_flags["hold_ready"] or is_warrior,
+            pose_flags["hold_ready"],
             stable_full_body_visible,
             low_light,
         )
@@ -1178,10 +1199,17 @@ def process_warrior_pose_request(request):
         tips.extend(stability_tips)
         tips.extend(framing_feedback)
 
+        display_model_label = wr_display_model_label(
+            stable_model_label,
+            pose_name,
+            pose_ready=pose_flags["pose_ready"] or is_warrior,
+        )
+
         wr_store_runtime(request, runtime)
         return wr_pose_success(
             pose=pose_name,
-            model_pose=stable_model_label,
+            model_pose=display_model_label,
+            raw_model_pose=stable_model_label,
             quality=wr_quality_from_score(stable_score),
             feedback=stable_feedback,
             coach_text=coach_text,

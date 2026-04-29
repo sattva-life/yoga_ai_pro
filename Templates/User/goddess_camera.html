@@ -1383,7 +1383,7 @@
             }
 
             if (synth.speaking) {
-                if (priority < SPEECH_PRIORITY.ALERT) return;
+                if (priority <= speechState.currentPriority && priority < SPEECH_PRIORITY.ALERT) return;
                 synth.cancel();
             }
 
@@ -1649,9 +1649,11 @@
                 countdownOverlay.classList.remove("hidden");
                 countdownText.textContent = countdownNumber;
 
-                if (countdownNumber !== holdState.lastCountdownNumber) {
+                if (countdownNumber !== holdState.lastCountdownNumber && countdownNumber <= 7) {
                     holdState.lastCountdownNumber = countdownNumber;
                     speakFeedback(String(countdownNumber), SPEECH_PRIORITY.ALERT);
+                } else if (holdState.lastCountdownNumber === null) {
+                    holdState.lastCountdownNumber = TARGET_HOLD_SECONDS;
                 }
 
                 if (!cameraState.isFrozen && holdState.accumulatedMs >= TARGET_HOLD_SECONDS * 1000) {
@@ -1662,6 +1664,7 @@
                     countdownOverlay.classList.add("hidden");
                     freezeCurrentFrame();
                     speakFeedback("Great job! You completed the Goddess pose.", SPEECH_PRIORITY.ALERT);
+                    setCameraBanner("10 Second Hold Complete!");
                     return;
                 }
             } else if (shouldPause) {
@@ -1689,7 +1692,6 @@
             updateHoldReadouts();
             speechState.currentPriority = 0;
             speechState.activeUtterance = null;
-            speechState.cooldowns.clear();
             if (synth) synth.cancel();
             clearOverlay();
 

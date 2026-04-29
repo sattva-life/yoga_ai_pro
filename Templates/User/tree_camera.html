@@ -1806,9 +1806,9 @@
             updateHoldReadouts();
             lastPayload = null;
             resetDisplayPointState();
-            speechState.cooldowns.clear();
             speechState.currentPriority = 0;
             speechState.activeUtterance = null;
+            if (synth) synth.cancel();
             clearOverlay();
             startPredictionLoop();
             setCameraBanner("Live");
@@ -1878,7 +1878,7 @@
             }
 
             if (synth.speaking) {
-                if (priority < SPEECH_PRIORITY.ALERT) return;
+                if (priority <= speechState.currentPriority && priority < SPEECH_PRIORITY.ALERT) return;
                 synth.cancel();
             }
 
